@@ -632,7 +632,7 @@ function renderTopRow() {
   for (let i = 0; i < showCount; i++) {
     const card = state.waste[startIdx + i];
     const cardEl = createCardElement(card, "waste", startIdx + i);
-    cardEl.style.left = `calc(${i} * var(--card-width) * 0.28)`;
+    cardEl.style.left = `calc(var(--card-width) * 0.25 + ${i} * var(--card-width) * 0.28)`;
     // Only the top card is tappable
     if (startIdx + i < wasteCount - 1) {
       cardEl.style.pointerEvents = "none";

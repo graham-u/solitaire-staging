@@ -127,7 +127,7 @@ body {
   aspect-ratio: auto;
   border: none;
   background: none;
-  padding-left: calc(var(--card-gap) * 2);
+  padding-left: 0;
 }
 
 /* Tableau */
