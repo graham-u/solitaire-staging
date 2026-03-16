@@ -1,0 +1,39 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply staging branding
+        if: github.repository == 'graham-u/solitaire-staging'
+        run: |
+          sed -i 's/"theme_color": "#2d7a3a"/"theme_color": "#c97b1a"/' manifest.json
+          sed -i 's/"background_color": "#2d7a3a"/"background_color": "#c97b1a"/' manifest.json
+          sed -i 's/"name": "Solitaire"/"name": "Solitaire (Dev)"/' manifest.json
+          sed -i 's/<title>Solitaire<\/title>/<title>Solitaire (Dev)<\/title>/' index.html
+          sed -i 's/--baize: #2d7a3a/--baize: #c97b1a/' style.css
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - uses: actions/deploy-pages@v4
+        id: deployment

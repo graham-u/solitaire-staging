@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#2d7a3a">
+  <title>Solitaire</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header id="status-bar">
+    <div class="stat">Score: <span id="score">0</span></div>
+    <div class="stat">Time: <span id="time">0:00</span></div>
+    <div class="stat">Moves: <span id="moves">0</span></div>
+  </header>
+
+  <div id="play-area">
+    <div id="top-row"></div>
+    <div id="tableau"></div>
+  </div>
+
+  <nav id="action-bar">
+    <button id="btn-new-game">New Game</button>
+    <button id="btn-hint">Hint</button>
+    <button id="btn-undo" disabled>Undo</button>
+  </nav>
+
+  <div id="version">v1</div>
+
+  <div id="win-overlay" class="hidden">
+    <div id="win-dialog">
+      <h1>You Win!</h1>
+      <p id="win-score"></p>
+      <p id="win-time"></p>
+      <p id="win-moves"></p>
+      <button id="btn-win-new-game">New Game</button>
+    </div>
+  </div>
+
+  <div id="confirm-overlay" class="hidden">
+    <div id="confirm-dialog">
+      <p>Start a new game?</p>
+      <div class="confirm-buttons">
+        <button id="btn-confirm-yes">Yes</button>
+        <button id="btn-confirm-no">No</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js");
+    }
+  </script>
+</body>
+</html>
