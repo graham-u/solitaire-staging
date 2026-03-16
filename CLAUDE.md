@@ -4,7 +4,7 @@ A solitaire card game for an elderly UK user, installed as a PWA on a tablet.
 
 ## Key Files
 
-- `DESIGN.md` — Full spec and architecture documentation
+- `DESIGN.md` — Full spec, architecture, and **reference screenshots** (Google Photos album of the app the user currently plays — consult before making visual/layout changes)
 - `index.html` — App shell
 - `style.css` — Layout and styles
 - `app.js` — Game logic, card handling, touch interactions
