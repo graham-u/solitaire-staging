@@ -12,7 +12,7 @@
   --card-height: calc(var(--card-width) * 1.4);
   --card-radius: 8px;
   --face-down-overlap: 16px;
-  --face-up-overlap: 48px;
+  --face-up-overlap: 38px;
 }
 
 html, body {
@@ -185,9 +185,9 @@ body {
 
 .card-suit-top {
   position: absolute;
-  top: calc(3px + var(--card-width) * 0.27);
-  left: 5px;
-  font-size: calc(var(--card-width) * 0.22);
+  top: 3px;
+  right: 5px;
+  font-size: calc(var(--card-width) * 0.28);
   line-height: 1;
 }
 
@@ -212,9 +212,9 @@ body {
 
 .card-suit-bottom {
   position: absolute;
-  bottom: calc(3px + var(--card-width) * 0.27);
-  right: 5px;
-  font-size: calc(var(--card-width) * 0.22);
+  bottom: 3px;
+  left: 5px;
+  font-size: calc(var(--card-width) * 0.28);
   line-height: 1;
   transform: rotate(180deg);
 }
