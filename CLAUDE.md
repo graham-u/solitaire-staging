@@ -43,12 +43,18 @@ Both repos use the same `main` branch and the same Pages workflow. The staging r
 ```bash
 # 1. Deploy to staging
 git push staging main
-run_id=$(gh run list --repo graham-u/solitaire-staging --limit 1 --json databaseId -q '.[0].databaseId') && gh run watch "$run_id" --repo graham-u/solitaire-staging --exit-status
+gh run list --repo graham-u/solitaire-staging --limit 1 --json databaseId -q '.[0].databaseId'
+# Then watch with the returned ID:
+gh run watch <run_id> --repo graham-u/solitaire-staging --exit-status
 
 # 2. Test on the staging URL, then deploy to production
 git push origin main
-run_id=$(gh run list --limit 1 --json databaseId -q '.[0].databaseId') && gh run watch "$run_id" --exit-status
+gh run list --limit 1 --json databaseId -q '.[0].databaseId'
+# Then watch with the returned ID:
+gh run watch <run_id> --exit-status
 ```
+
+**Note:** Run `gh run list` and `gh run watch` as two separate commands — do not use `$()` command substitution, as it triggers a security approval prompt.
 
 **Never push directly to production without deploying to staging first.** The production URL is installed as a PWA on the end user's tablet.
 
