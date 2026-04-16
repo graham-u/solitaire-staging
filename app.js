@@ -28,10 +28,11 @@ let hintTimeout = null;
 
 /* ── Solver state ── */
 
-/* Solver only runs when the state space is small enough to likely resolve
-   within the worker's time budget. The game starts with 21 face-down tableau
-   cards; once most are revealed, search is far more tractable. */
-const SOLVER_MAX_FACE_DOWN = 7;
+/* The solver self-limits via time and visited-state caps in the worker.
+   We debounce on idle so searches only fire when the user has paused — the
+   worker returns quickly for hopeless cases and for genuinely near-trivial
+   ones (e.g. high recycle count + few legal moves), so no up-front gate on
+   game state is needed. */
 const SOLVER_IDLE_DEBOUNCE_MS = 3000;
 const SOLVER_TIME_LIMIT_MS = 8000;
 
@@ -922,14 +923,6 @@ function showUnwinnableOverlay() {
   document.getElementById("unwinnable-overlay").classList.remove("hidden");
 }
 
-function countFaceDownTableau() {
-  let n = 0;
-  for (const col of state.tableau) {
-    for (const c of col) if (!c.faceUp) n++;
-  }
-  return n;
-}
-
 function scheduleSolverCheck() {
   if (solverDebounceTimer) clearTimeout(solverDebounceTimer);
   solverDebounceTimer = setTimeout(() => {
@@ -940,7 +933,6 @@ function scheduleSolverCheck() {
 
 function maybeTriggerSolver() {
   if (!solverState.hasCompletedFirstCycle) return;
-  if (countFaceDownTableau() > SOLVER_MAX_FACE_DOWN) return;
   if (solverState.lastResult === "unwinnable") return;
   if (solverState.running) return;
 

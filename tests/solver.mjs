@@ -177,13 +177,11 @@ export default async function run() {
       assertEqual(result.lastResult, null, "no result yet");
     });
 
-    await test("solver triggers after first recycle once face-down count is low", async () => {
+    await test("solver triggers after first recycle", async () => {
       const result = await ev(() => {
         dealGame();
         while (state.stock.length > 0) drawFromStock();
         recycleWaste();
-        // Flip all tableau cards face-up so the progress gate passes
-        for (const col of state.tableau) for (const c of col) c.faceUp = true;
         maybeTriggerSolver();
         return {
           hasCompleted: solverState.hasCompletedFirstCycle,
@@ -194,20 +192,25 @@ export default async function run() {
       assert(result.running, "solver should have been triggered");
     });
 
-    await test("solver does not trigger when face-down count is still high", async () => {
-      const result = await ev(() => {
+    await test("captured mid-game unwinnable position is detected", async () => {
+      // Regression: a real position the user flagged as stuck. Ace of clubs is
+      // buried under five face-down cards in col 6, with no path to dig it out.
+      // This has 17 face-down cards — previously blocked by the face-down gate.
+      const captured = {"stock":[{"suit":"clubs","rank":"K","faceUp":false},{"suit":"hearts","rank":"K","faceUp":false},{"suit":"spades","rank":"6","faceUp":false},{"suit":"clubs","rank":"4","faceUp":false},{"suit":"diamonds","rank":"8","faceUp":false},{"suit":"hearts","rank":"7","faceUp":false}],"waste":[{"suit":"diamonds","rank":"5","faceUp":true},{"suit":"clubs","rank":"6","faceUp":true},{"suit":"spades","rank":"9","faceUp":true},{"suit":"diamonds","rank":"7","faceUp":true},{"suit":"hearts","rank":"8","faceUp":true}],"foundations":[[{"suit":"diamonds","rank":"A","faceUp":true},{"suit":"diamonds","rank":"2","faceUp":true},{"suit":"diamonds","rank":"3","faceUp":true}],[{"suit":"spades","rank":"A","faceUp":true},{"suit":"spades","rank":"2","faceUp":true},{"suit":"spades","rank":"3","faceUp":true}],[{"suit":"hearts","rank":"A","faceUp":true},{"suit":"hearts","rank":"2","faceUp":true}],[]],"tableau":[[{"suit":"diamonds","rank":"K","faceUp":true},{"suit":"clubs","rank":"Q","faceUp":true},{"suit":"diamonds","rank":"J","faceUp":true}],[{"suit":"diamonds","rank":"4","faceUp":false},{"suit":"hearts","rank":"9","faceUp":true}],[{"suit":"clubs","rank":"J","faceUp":false},{"suit":"clubs","rank":"10","faceUp":false},{"suit":"diamonds","rank":"9","faceUp":true}],[{"suit":"hearts","rank":"J","faceUp":false},{"suit":"hearts","rank":"5","faceUp":true},{"suit":"spades","rank":"4","faceUp":true},{"suit":"hearts","rank":"3","faceUp":true},{"suit":"clubs","rank":"2","faceUp":true}],[{"suit":"spades","rank":"10","faceUp":false},{"suit":"hearts","rank":"10","faceUp":false},{"suit":"clubs","rank":"8","faceUp":false},{"suit":"hearts","rank":"Q","faceUp":true}],[{"suit":"spades","rank":"8","faceUp":false},{"suit":"diamonds","rank":"10","faceUp":false},{"suit":"spades","rank":"K","faceUp":false},{"suit":"spades","rank":"7","faceUp":false},{"suit":"clubs","rank":"7","faceUp":true},{"suit":"hearts","rank":"6","faceUp":true},{"suit":"spades","rank":"5","faceUp":true},{"suit":"hearts","rank":"4","faceUp":true}],[{"suit":"spades","rank":"Q","faceUp":false},{"suit":"clubs","rank":"9","faceUp":false},{"suit":"clubs","rank":"A","faceUp":false},{"suit":"clubs","rank":"3","faceUp":false},{"suit":"diamonds","rank":"6","faceUp":false},{"suit":"clubs","rank":"5","faceUp":false},{"suit":"diamonds","rank":"Q","faceUp":true},{"suit":"spades","rank":"J","faceUp":true}]],"recycleCount":4};
+      const result = await page.evaluate((s) => {
         dealGame();
-        while (state.stock.length > 0) drawFromStock();
-        recycleWaste();
-        // Fresh deal has 21 face-down cards — gate should block
+        state.stock = s.stock;
+        state.waste = s.waste;
+        state.foundations = s.foundations;
+        state.tableau = s.tableau;
+        state.recycleCount = s.recycleCount;
+        solverState.hasCompletedFirstCycle = true;
+        solverState.lastResult = null;
+        solverState.running = false;
         maybeTriggerSolver();
-        return {
-          running: solverState.running,
-          lastResult: solverState.lastResult
-        };
-      });
-      assertEqual(result.running, false, "solver should not run with many face-down cards");
-      assertEqual(result.lastResult, null, "no result expected");
+        return waitForSolverResult();
+      }, captured);
+      assertEqual(result, "unwinnable", "captured state should be detected as unwinnable");
     });
 
     await test("unwinnable result shows overlay", async () => {
