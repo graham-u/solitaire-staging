@@ -320,7 +320,7 @@ function solve(initialState, timeLimit) {
   const visited = new Set();
   const startTime = performance.now();
   const maxVisited = 500000;
-  const maxDepth = 500;
+  const maxDepth = 2000;
   let statesExplored = 0;
   let hitDepthLimit = false;
 

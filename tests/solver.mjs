@@ -213,6 +213,26 @@ export default async function run() {
       assertEqual(result, "unwinnable", "captured state should be detected as unwinnable");
     });
 
+    await test("captured late-game unwinnable position is detected", async () => {
+      // Regression: second user-reported position. Only 7 face-down cards, but
+      // the old depth-500 cap caused the solver to bail with "timeout".
+      const captured = {"stock":[],"waste":[{"suit":"clubs","rank":"10","faceUp":true}],"foundations":[[{"suit":"diamonds","rank":"A","faceUp":true},{"suit":"diamonds","rank":"2","faceUp":true}],[{"suit":"hearts","rank":"A","faceUp":true},{"suit":"hearts","rank":"2","faceUp":true},{"suit":"hearts","rank":"3","faceUp":true},{"suit":"hearts","rank":"4","faceUp":true},{"suit":"hearts","rank":"5","faceUp":true},{"suit":"hearts","rank":"6","faceUp":true},{"suit":"hearts","rank":"7","faceUp":true}],[{"suit":"clubs","rank":"A","faceUp":true},{"suit":"clubs","rank":"2","faceUp":true},{"suit":"clubs","rank":"3","faceUp":true},{"suit":"clubs","rank":"4","faceUp":true},{"suit":"clubs","rank":"5","faceUp":true}],[{"suit":"spades","rank":"A","faceUp":true},{"suit":"spades","rank":"2","faceUp":true},{"suit":"spades","rank":"3","faceUp":true},{"suit":"spades","rank":"4","faceUp":true}]],"tableau":[[{"suit":"diamonds","rank":"K","faceUp":true},{"suit":"spades","rank":"Q","faceUp":true},{"suit":"hearts","rank":"J","faceUp":true},{"suit":"spades","rank":"10","faceUp":true},{"suit":"diamonds","rank":"9","faceUp":true},{"suit":"clubs","rank":"8","faceUp":true},{"suit":"diamonds","rank":"7","faceUp":true},{"suit":"clubs","rank":"6","faceUp":true},{"suit":"diamonds","rank":"5","faceUp":true}],[{"suit":"clubs","rank":"K","faceUp":true},{"suit":"hearts","rank":"Q","faceUp":true},{"suit":"spades","rank":"J","faceUp":true}],[{"suit":"hearts","rank":"9","faceUp":true},{"suit":"spades","rank":"8","faceUp":true}],[{"suit":"hearts","rank":"K","faceUp":true},{"suit":"clubs","rank":"Q","faceUp":true}],[],[{"suit":"diamonds","rank":"8","faceUp":false},{"suit":"diamonds","rank":"J","faceUp":false},{"suit":"diamonds","rank":"3","faceUp":false},{"suit":"spades","rank":"6","faceUp":false},{"suit":"diamonds","rank":"Q","faceUp":true},{"suit":"clubs","rank":"J","faceUp":true},{"suit":"hearts","rank":"10","faceUp":true},{"suit":"spades","rank":"9","faceUp":true},{"suit":"hearts","rank":"8","faceUp":true},{"suit":"spades","rank":"7","faceUp":true},{"suit":"diamonds","rank":"6","faceUp":true},{"suit":"spades","rank":"5","faceUp":true},{"suit":"diamonds","rank":"4","faceUp":true}],[{"suit":"diamonds","rank":"10","faceUp":false},{"suit":"spades","rank":"K","faceUp":false},{"suit":"clubs","rank":"7","faceUp":false},{"suit":"clubs","rank":"9","faceUp":true}]],"recycleCount":4};
+      const result = await page.evaluate((s) => {
+        dealGame();
+        state.stock = s.stock;
+        state.waste = s.waste;
+        state.foundations = s.foundations;
+        state.tableau = s.tableau;
+        state.recycleCount = s.recycleCount;
+        solverState.hasCompletedFirstCycle = true;
+        solverState.lastResult = null;
+        solverState.running = false;
+        maybeTriggerSolver();
+        return waitForSolverResult();
+      }, captured);
+      assertEqual(result, "unwinnable", "captured state should be detected as unwinnable");
+    });
+
     await test("unwinnable result shows overlay", async () => {
       const result = await ev(() => {
         // Set up blocked state and trigger solver
