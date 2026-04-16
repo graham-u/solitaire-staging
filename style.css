@@ -317,8 +317,15 @@ body {
   right: 8px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.3);
-  pointer-events: none;
   z-index: 1;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: color 0.3s ease;
+}
+
+#version.copied {
+  color: rgba(120, 220, 140, 0.85);
 }
 
 /* Win overlay */

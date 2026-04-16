@@ -798,6 +798,73 @@ document.getElementById("btn-unwinnable-new-game").addEventListener("click", () 
   dealGame();
 });
 
+/* ── Long-press version number to copy game state to clipboard (debug) ── */
+
+(function setupVersionLongPress() {
+  const versionEl = document.getElementById("version");
+  if (!versionEl) return;
+
+  const LONG_PRESS_MS = 800;
+  const MOVE_TOLERANCE_PX = 10;
+  let pressTimer = null;
+  let startX = 0;
+  let startY = 0;
+
+  function cancel() {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  }
+
+  function flashCopied() {
+    versionEl.classList.add("copied");
+    setTimeout(() => versionEl.classList.remove("copied"), 800);
+  }
+
+  function copyState() {
+    const payload = localStorage.getItem("solitaire-state") || "";
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(payload).then(flashCopied, () => {});
+    } else {
+      // Fallback for older browsers without Clipboard API
+      const ta = document.createElement("textarea");
+      ta.value = payload;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); flashCopied(); } catch (_) {}
+      document.body.removeChild(ta);
+    }
+  }
+
+  versionEl.addEventListener("pointerdown", (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    cancel();
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      copyState();
+    }, LONG_PRESS_MS);
+  });
+
+  versionEl.addEventListener("pointermove", (e) => {
+    if (!pressTimer) return;
+    if (Math.abs(e.clientX - startX) > MOVE_TOLERANCE_PX ||
+        Math.abs(e.clientY - startY) > MOVE_TOLERANCE_PX) {
+      cancel();
+    }
+  });
+
+  versionEl.addEventListener("pointerup", cancel);
+  versionEl.addEventListener("pointercancel", cancel);
+  versionEl.addEventListener("pointerleave", cancel);
+
+  // Prevent iOS context menu / selection on long-press
+  versionEl.addEventListener("contextmenu", (e) => e.preventDefault());
+})();
+
 /* ── Visibility change for timer ── */
 
 document.addEventListener("visibilitychange", () => {
