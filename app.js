@@ -28,7 +28,15 @@ let hintTimeout = null;
 
 /* ── Solver state ── */
 
+/* Solver only runs when the state space is small enough to likely resolve
+   within the worker's time budget. The game starts with 21 face-down tableau
+   cards; once most are revealed, search is far more tractable. */
+const SOLVER_MAX_FACE_DOWN = 7;
+const SOLVER_IDLE_DEBOUNCE_MS = 3000;
+const SOLVER_TIME_LIMIT_MS = 8000;
+
 let solverWorker = null;
+let solverDebounceTimer = null;
 let solverState = {
   hasCompletedFirstCycle: false,
   lastResult: null,
@@ -199,7 +207,6 @@ function recycleWaste() {
   }
   render();
   saveState();
-  maybeTriggerSolver();
 }
 
 function moveCardToFoundation(card, fromPile, foundationIndex) {
@@ -622,6 +629,7 @@ function render() {
   renderTopRow();
   renderTableau();
   updateUndoButton();
+  scheduleSolverCheck();
 }
 
 function renderTopRow() {
@@ -808,6 +816,10 @@ function cancelSolver() {
   // currentSolveId ensures any in-flight result is ignored (stale solveId).
   solverState.currentSolveId++;
   solverState.running = false;
+  if (solverDebounceTimer) {
+    clearTimeout(solverDebounceTimer);
+    solverDebounceTimer = null;
+  }
 }
 
 function resetSolverState() {
@@ -826,8 +838,25 @@ function showUnwinnableOverlay() {
   document.getElementById("unwinnable-overlay").classList.remove("hidden");
 }
 
+function countFaceDownTableau() {
+  let n = 0;
+  for (const col of state.tableau) {
+    for (const c of col) if (!c.faceUp) n++;
+  }
+  return n;
+}
+
+function scheduleSolverCheck() {
+  if (solverDebounceTimer) clearTimeout(solverDebounceTimer);
+  solverDebounceTimer = setTimeout(() => {
+    solverDebounceTimer = null;
+    maybeTriggerSolver();
+  }, SOLVER_IDLE_DEBOUNCE_MS);
+}
+
 function maybeTriggerSolver() {
   if (!solverState.hasCompletedFirstCycle) return;
+  if (countFaceDownTableau() > SOLVER_MAX_FACE_DOWN) return;
   if (solverState.lastResult === "unwinnable") return;
   if (solverState.running) return;
 
@@ -866,7 +895,7 @@ function maybeTriggerSolver() {
       tableau: state.tableau,
       recycleCount: state.recycleCount
     },
-    timeLimit: 3000,
+    timeLimit: SOLVER_TIME_LIMIT_MS,
     solveId: solverState.currentSolveId
   });
 }

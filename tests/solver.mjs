@@ -177,12 +177,14 @@ export default async function run() {
       assertEqual(result.lastResult, null, "no result yet");
     });
 
-    await test("solver triggers after first recycle", async () => {
+    await test("solver triggers after first recycle once face-down count is low", async () => {
       const result = await ev(() => {
         dealGame();
-        // Draw all stock cards then recycle
         while (state.stock.length > 0) drawFromStock();
         recycleWaste();
+        // Flip all tableau cards face-up so the progress gate passes
+        for (const col of state.tableau) for (const c of col) c.faceUp = true;
+        maybeTriggerSolver();
         return {
           hasCompleted: solverState.hasCompletedFirstCycle,
           running: solverState.running || solverState.lastResult !== null
@@ -190,6 +192,22 @@ export default async function run() {
       });
       assertEqual(result.hasCompleted, true, "should have completed first cycle");
       assert(result.running, "solver should have been triggered");
+    });
+
+    await test("solver does not trigger when face-down count is still high", async () => {
+      const result = await ev(() => {
+        dealGame();
+        while (state.stock.length > 0) drawFromStock();
+        recycleWaste();
+        // Fresh deal has 21 face-down cards — gate should block
+        maybeTriggerSolver();
+        return {
+          running: solverState.running,
+          lastResult: solverState.lastResult
+        };
+      });
+      assertEqual(result.running, false, "solver should not run with many face-down cards");
+      assertEqual(result.lastResult, null, "no result expected");
     });
 
     await test("unwinnable result shows overlay", async () => {
