@@ -806,62 +806,79 @@ document.getElementById("btn-unwinnable-new-game").addEventListener("click", () 
 
   const LONG_PRESS_MS = 800;
   const MOVE_TOLERANCE_PX = 10;
-  let pressTimer = null;
+  let pressStart = 0;
+  let active = false;
   let startX = 0;
   let startY = 0;
 
-  function cancel() {
-    if (pressTimer) {
-      clearTimeout(pressTimer);
-      pressTimer = null;
-    }
-  }
-
-  function flashCopied() {
-    versionEl.classList.add("copied");
-    setTimeout(() => versionEl.classList.remove("copied"), 800);
+  function showToast(text) {
+    const toast = document.createElement("div");
+    toast.className = "debug-toast";
+    toast.textContent = text;
+    document.body.appendChild(toast);
+    // Force reflow, then trigger fade-in
+    void toast.offsetWidth;
+    toast.classList.add("visible");
+    setTimeout(() => {
+      toast.classList.remove("visible");
+      setTimeout(() => toast.remove(), 400);
+    }, 1200);
   }
 
   function copyState() {
     const payload = localStorage.getItem("solitaire-state") || "";
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(payload).then(flashCopied, () => {});
+      navigator.clipboard.writeText(payload).then(
+        () => showToast("Game state copied"),
+        () => showToast("Copy failed")
+      );
     } else {
-      // Fallback for older browsers without Clipboard API
       const ta = document.createElement("textarea");
       ta.value = payload;
       ta.style.position = "fixed";
       ta.style.opacity = "0";
       document.body.appendChild(ta);
       ta.select();
-      try { document.execCommand("copy"); flashCopied(); } catch (_) {}
+      try {
+        document.execCommand("copy");
+        showToast("Game state copied");
+      } catch (_) {
+        showToast("Copy failed");
+      }
       document.body.removeChild(ta);
     }
   }
 
   versionEl.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    active = true;
+    pressStart = performance.now();
     startX = e.clientX;
     startY = e.clientY;
-    cancel();
-    pressTimer = setTimeout(() => {
-      pressTimer = null;
-      copyState();
-    }, LONG_PRESS_MS);
   });
 
   versionEl.addEventListener("pointermove", (e) => {
-    if (!pressTimer) return;
+    if (!active) return;
     if (Math.abs(e.clientX - startX) > MOVE_TOLERANCE_PX ||
         Math.abs(e.clientY - startY) > MOVE_TOLERANCE_PX) {
-      cancel();
+      active = false;
     }
   });
 
-  versionEl.addEventListener("pointerup", cancel);
-  versionEl.addEventListener("pointercancel", cancel);
-  versionEl.addEventListener("pointerleave", cancel);
+  versionEl.addEventListener("pointerup", (e) => {
+    if (!active) return;
+    const held = performance.now() - pressStart;
+    active = false;
+    if (held >= LONG_PRESS_MS) {
+      // Copy is triggered in direct response to pointerup — iOS Safari
+      // requires clipboard writes to happen within an active user gesture.
+      copyState();
+    }
+  });
 
-  // Prevent iOS context menu / selection on long-press
+  versionEl.addEventListener("pointercancel", () => { active = false; });
+  versionEl.addEventListener("pointerleave", () => { active = false; });
+
   versionEl.addEventListener("contextmenu", (e) => e.preventDefault());
 })();
 
