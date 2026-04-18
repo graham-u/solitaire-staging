@@ -396,6 +396,7 @@ function solveTrace(initialState, timeLimit) {
   const startTime = performance.now();
   const maxVisited = 500000;
   const maxDepth = 2000;
+  let hitDepthLimit = false;
 
   // Dominance inlined so we can snapshot state before each auto-played move.
   function domStep(s, pairs) {
@@ -433,7 +434,10 @@ function solveTrace(initialState, timeLimit) {
   }
 
   function dfs(s, pairs) {
-    if (pairs.length > maxDepth) return false;
+    if (pairs.length > maxDepth) {
+      hitDepthLimit = true;
+      return false;
+    }
     const preLen = pairs.length;
     while (domStep(s, pairs)) { /* keep applying safe auto-plays */ }
     if (isWon(s)) return pairs.slice();
@@ -461,12 +465,17 @@ function solveTrace(initialState, timeLimit) {
   const result = dfs(root, []);
 
   if (result === "timeout") return { outcome: "timeout" };
-  if (!Array.isArray(result) || result.length === 0) return { outcome: "unwinnable" };
-  return {
-    outcome: "winnable",
-    moves: result.map(p => p.move),
-    snapshots: result.map(p => p.snap)
-  };
+  if (Array.isArray(result) && result.length > 0) {
+    return {
+      outcome: "winnable",
+      moves: result.map(p => p.move),
+      snapshots: result.map(p => p.snap)
+    };
+  }
+  // DFS returned false — only call this unwinnable if the search was truly
+  // exhaustive. If any branch bailed on the depth cap, we don't know.
+  if (hitDepthLimit) return { outcome: "timeout" };
+  return { outcome: "unwinnable" };
 }
 
 /* ── Worker message handling ── */
