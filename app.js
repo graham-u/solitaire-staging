@@ -360,51 +360,6 @@ function undo() {
 
 /* ── Hint ── */
 
-const SUIT_SYMBOLS_HINT = { clubs: "♣", diamonds: "♦", hearts: "♥", spades: "♠" };
-
-function cardLabel(card) {
-  return card ? `${card.rank}${SUIT_SYMBOLS_HINT[card.suit]}` : "?";
-}
-
-function describeSolverMove(move) {
-  const w = state.waste;
-  const f = state.foundations;
-  const t = state.tableau;
-  switch (move.type) {
-    case "draw":
-      return "Turn over a card from the stock";
-    case "recycle":
-      return "Reset the stock — tap it to cycle the waste back";
-    case "waste-to-foundation":
-      return `Send ${cardLabel(w[w.length - 1])} from the waste up to the foundation`;
-    case "waste-to-tableau": {
-      const destTop = t[move.ti][t[move.ti].length - 1];
-      return `Move ${cardLabel(w[w.length - 1])} from the waste onto ${cardLabel(destTop)}`;
-    }
-    case "tableau-to-foundation": {
-      const col = t[move.fromCol];
-      return `Send ${cardLabel(col[col.length - 1])} up to the foundation`;
-    }
-    case "foundation-to-tableau": {
-      const src = f[move.fi][f[move.fi].length - 1];
-      const destTop = t[move.ti][t[move.ti].length - 1];
-      const where = destTop ? `onto ${cardLabel(destTop)}` : `into the empty column`;
-      return `Bring ${cardLabel(src)} back down from the foundation ${where}`;
-    }
-    case "tableau-to-tableau": {
-      const fromCol = t[move.fromCol];
-      const bottom = fromCol[move.startIdx];
-      const top = fromCol[fromCol.length - 1];
-      const destCol = t[move.toCol];
-      const destTop = destCol[destCol.length - 1];
-      const stackLabel = bottom === top ? cardLabel(bottom) : `${cardLabel(bottom)}…${cardLabel(top)}`;
-      const where = destTop ? `onto ${cardLabel(destTop)}` : `into the empty column`;
-      return `Move ${stackLabel} ${where}`;
-    }
-  }
-  return "";
-}
-
 function showHintFromSolverMove(move) {
   clearHint();
 
@@ -451,28 +406,7 @@ function showHintFromSolverMove(move) {
       break;
   }
 
-  showHintMessage(describeSolverMove(move));
   hintTimeout = setTimeout(clearHint, 6000);
-}
-
-function showHintMessage(text) {
-  if (!text) return;
-  let el = document.getElementById("hint-message");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "hint-message";
-    document.body.appendChild(el);
-  }
-  el.innerHTML =
-    `<span class="hint-legend-swatch source"></span>from &nbsp;→&nbsp; ` +
-    `<span class="hint-legend-swatch dest"></span>to<br>${text}`;
-  void el.offsetWidth; // force reflow so the fade-in transitions
-  el.classList.add("visible");
-}
-
-function hideHintMessage() {
-  const el = document.getElementById("hint-message");
-  if (el) el.classList.remove("visible");
 }
 
 function highlightDestination(move) {
@@ -494,7 +428,6 @@ function highlightDestination(move) {
 }
 
 function clearHint() {
-  hideHintMessage();
   document.querySelectorAll(".highlighted-source, .highlighted-dest")
     .forEach(el => el.classList.remove("highlighted-source", "highlighted-dest"));
   if (hintTimeout) {
@@ -824,7 +757,40 @@ function hideHintOverlay() {
   document.getElementById("hint-overlay").classList.add("hidden");
 }
 
+/* Cached winning plan. Lets subsequent hint taps advance through a single
+   coherent sequence instead of the solver returning a different winning
+   path each call (which causes apparent oscillation between reversible
+   moves like "8 → 9" and "8 → foundation"). */
+let cachedPlan = null;  // { moves: [...], snapshots: [...] } — snapshots[i] is canonical state before moves[i]
+
+function canonicalCurrentState() {
+  return JSON.stringify({
+    stock: state.stock.map(c => [c.suit, c.rank]),
+    waste: state.waste.map(c => [c.suit, c.rank]),
+    foundations: state.foundations.map(f => f.map(c => [c.suit, c.rank])),
+    tableau: state.tableau.map(col => col.map(c => [c.suit, c.rank, c.faceUp]))
+  });
+}
+
+function nextMoveFromCachedPlan() {
+  if (!cachedPlan) return null;
+  const snap = canonicalCurrentState();
+  const i = cachedPlan.snapshots.indexOf(snap);
+  if (i === -1) return null;
+  return cachedPlan.moves[i];
+}
+
+function clearCachedPlan() { cachedPlan = null; }
+
 function requestSolverHint() {
+  // Try to serve from the cached plan first — only kicks off a fresh search
+  // if the current state doesn't sit anywhere on the last computed path.
+  const cached = nextMoveFromCachedPlan();
+  if (cached) {
+    showHintFromSolverMove(cached);
+    return;
+  }
+
   // Terminate any in-flight worker so the hint doesn't queue behind an
   // unwinnable-detector search. The unwinnable detector will retry later.
   if (solverWorker) {
@@ -864,10 +830,9 @@ function requestSolverHint() {
 }
 
 function cancelHintRequest() {
-  hintRequestId++;  // invalidates in-flight result
+  hintRequestId++;
   if (hintOverlayTimer) { clearTimeout(hintOverlayTimer); hintOverlayTimer = null; }
   hideHintOverlay();
-  // Terminate the worker so the search actually stops (rather than finishing in the background).
   if (solverWorker) {
     solverWorker.terminate();
     solverWorker = null;
@@ -878,7 +843,6 @@ function cancelHintRequest() {
 function handleSolverMessage(e) {
   const msg = e.data;
   if (msg.type === "result") {
-    // From the unwinnable detector — existing flow.
     if (msg.solveId !== solverState.currentSolveId) return;
     solverState.running = false;
     solverState.lastResult = msg.outcome;
@@ -887,9 +851,11 @@ function handleSolverMessage(e) {
     if (msg.solveId !== hintRequestId) return;
     if (hintOverlayTimer) { clearTimeout(hintOverlayTimer); hintOverlayTimer = null; }
     hideHintOverlay();
-    if (msg.outcome === "winnable" && msg.firstMove) {
-      showHintFromSolverMove(msg.firstMove);
+    if (msg.outcome === "winnable" && msg.moves && msg.moves.length > 0) {
+      cachedPlan = { moves: msg.moves, snapshots: msg.snapshots };
+      showHintFromSolverMove(msg.moves[0]);
     } else if (msg.outcome === "unwinnable") {
+      cachedPlan = null;
       showUnwinnableOverlay();
     }
     // On timeout we do nothing — the user can tap Hint again later.
@@ -1029,6 +995,7 @@ function cancelSolver() {
 
 function resetSolverState() {
   cancelSolver();
+  clearCachedPlan();
   solverState.hasCompletedFirstCycle = false;
   solverState.lastResult = null;
   solverState.running = false;

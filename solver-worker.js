@@ -373,7 +373,23 @@ function solve(initialState, timeLimit) {
   return "unwinnable";
 }
 
-/* ── Solver with path tracking (returns the first move on a winning path) ── */
+/* ── Solver with path tracking (returns moves + state snapshots) ──
+
+   Returns the full winning sequence and a canonical snapshot of the game
+   state before each move, so the caller can cache the plan and advance
+   through it on subsequent hint requests (rather than recomputing and
+   oscillating between alternative winning paths). */
+
+function canonicalSnapshot(s) {
+  // Omit recycleCount — the solver resets it to 0 internally, but the live
+  // app state keeps the user's real count. Everything else must match.
+  return JSON.stringify({
+    stock: s.stock.map(c => [c.suit, c.rank]),
+    waste: s.waste.map(c => [c.suit, c.rank]),
+    foundations: s.foundations.map(f => f.map(c => [c.suit, c.rank])),
+    tableau: s.tableau.map(col => col.map(c => [c.suit, c.rank, c.faceUp]))
+  });
+}
 
 function solveTrace(initialState, timeLimit) {
   const visited = new Set();
@@ -381,27 +397,62 @@ function solveTrace(initialState, timeLimit) {
   const maxVisited = 500000;
   const maxDepth = 2000;
 
-  function dfs(s, path) {
-    if (path.length > maxDepth) return false;
-    const preDomLen = path.length;
-    applyDominanceMoves(s, path);
-    if (isWon(s)) return path.slice();
+  // Dominance inlined so we can snapshot state before each auto-played move.
+  function domStep(s, pairs) {
+    if (s.waste.length > 0) {
+      const card = s.waste[s.waste.length - 1];
+      for (let i = 0; i < 4; i++) {
+        const fTop = s.foundations[i].length > 0 ? s.foundations[i][s.foundations[i].length - 1] : null;
+        if (canPlaceOnFoundation(card, fTop) && isSafeFoundationMove(card, s.foundations)) {
+          pairs.push({ move: { type: "waste-to-foundation", fi: i }, snap: canonicalSnapshot(s) });
+          s.waste.pop();
+          s.foundations[i].push(card);
+          return true;
+        }
+      }
+    }
+    for (let col = 0; col < 7; col++) {
+      const column = s.tableau[col];
+      if (column.length === 0) continue;
+      const card = column[column.length - 1];
+      if (!card.faceUp) continue;
+      for (let i = 0; i < 4; i++) {
+        const fTop = s.foundations[i].length > 0 ? s.foundations[i][s.foundations[i].length - 1] : null;
+        if (canPlaceOnFoundation(card, fTop) && isSafeFoundationMove(card, s.foundations)) {
+          pairs.push({ move: { type: "tableau-to-foundation", fromCol: col, fi: i }, snap: canonicalSnapshot(s) });
+          column.pop();
+          s.foundations[i].push(card);
+          if (column.length > 0 && !column[column.length - 1].faceUp) {
+            column[column.length - 1].faceUp = true;
+          }
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function dfs(s, pairs) {
+    if (pairs.length > maxDepth) return false;
+    const preLen = pairs.length;
+    while (domStep(s, pairs)) { /* keep applying safe auto-plays */ }
+    if (isWon(s)) return pairs.slice();
     if (performance.now() - startTime > timeLimit) return "timeout";
     const hash = hashState(s);
-    if (visited.has(hash)) { path.length = preDomLen; return false; }
+    if (visited.has(hash)) { pairs.length = preLen; return false; }
     if (visited.size >= maxVisited) return "timeout";
     visited.add(hash);
     const moves = findAllMoves(s);
     for (const move of moves) {
       const child = cloneState(s);
       applyMove(child, move);
-      path.push(move);
-      const r = dfs(child, path);
+      pairs.push({ move, snap: canonicalSnapshot(s) });
+      const r = dfs(child, pairs);
       if (r === "timeout") return "timeout";
       if (Array.isArray(r)) return r;
-      path.pop();
+      pairs.pop();
     }
-    path.length = preDomLen;
+    pairs.length = preLen;
     return false;
   }
 
@@ -411,7 +462,11 @@ function solveTrace(initialState, timeLimit) {
 
   if (result === "timeout") return { outcome: "timeout" };
   if (!Array.isArray(result) || result.length === 0) return { outcome: "unwinnable" };
-  return { outcome: "winnable", firstMove: result[0], pathLength: result.length };
+  return {
+    outcome: "winnable",
+    moves: result.map(p => p.move),
+    snapshots: result.map(p => p.snap)
+  };
 }
 
 /* ── Worker message handling ── */

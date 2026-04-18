@@ -199,8 +199,7 @@ export default async function run() {
         const deadline = Date.now() + 15000;
         const q = () => ({
           source: document.querySelectorAll(".highlighted-source").length,
-          dest: document.querySelectorAll(".highlighted-dest").length,
-          message: document.getElementById("hint-message")?.textContent ?? ""
+          dest: document.querySelectorAll(".highlighted-dest").length
         });
         while (Date.now() < deadline) {
           if (q().source > 0 || q().dest > 0) break;
@@ -211,7 +210,6 @@ export default async function run() {
         return snap;
       });
       assert(result.source > 0 || result.dest > 0, "hint should highlight at least one element");
-      assert(result.message.length > 0, "hint should show a textual description");
     });
 
     await test("win detection triggers on full foundations", async () => {
