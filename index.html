@@ -30,7 +30,7 @@
     <button id="btn-undo" disabled>Undo</button>
   </nav>
 
-  <div id="version">v23</div>
+  <div id="version">v24</div>
 
   <div id="win-overlay" class="hidden">
     <div id="win-dialog">
@@ -44,9 +44,12 @@
 
   <div id="unwinnable-overlay" class="hidden">
     <div id="unwinnable-dialog">
-      <h1>Game Over</h1>
-      <p>It looks like this game can't be won.</p>
-      <button id="btn-unwinnable-new-game">Start a new game?</button>
+      <h1>Stuck?</h1>
+      <p>This game looks unwinnable from here.</p>
+      <div class="unwinnable-buttons">
+        <button id="btn-unwinnable-keep-trying">Keep trying</button>
+        <button id="btn-unwinnable-new-game">Start new game</button>
+      </div>
     </div>
   </div>
 

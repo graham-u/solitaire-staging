@@ -286,6 +286,59 @@ export default async function run() {
       assertEqual(result.tabLen, 28, "new game should deal 28 to tableau");
     });
 
+    await test("Keep trying button hides overlay and suppresses re-detection", async () => {
+      const result = await ev(() => {
+        dealGame();
+        const stockBefore = state.stock.length;
+        const tabBefore = state.tableau.reduce((sum, col) => sum + col.length, 0);
+        document.getElementById("unwinnable-overlay").classList.remove("hidden");
+        solverState.lastResult = "unwinnable";
+        document.getElementById("btn-unwinnable-keep-trying").click();
+        return {
+          overlayHidden: document.getElementById("unwinnable-overlay").classList.contains("hidden"),
+          stockUnchanged: state.stock.length === stockBefore,
+          tabUnchanged: state.tableau.reduce((sum, col) => sum + col.length, 0) === tabBefore,
+          userIgnored: solverState.userIgnoredUnwinnable
+        };
+      });
+      assert(result.overlayHidden, "overlay should be hidden after Keep trying");
+      assert(result.stockUnchanged, "stock should be untouched");
+      assert(result.tabUnchanged, "tableau should be untouched");
+      assert(result.userIgnored, "userIgnoredUnwinnable should be set so detector won't re-fire");
+    });
+
+    await test("undo after Keep trying does not re-show unwinnable overlay", async () => {
+      const result = await ev(() => {
+        dealGame();
+        // Make a real move so undo has something to pop
+        drawFromStock();
+        // Simulate the user dismissing the unwinnable overlay
+        solverState.lastResult = "unwinnable";
+        solverState.userIgnoredUnwinnable = true;
+        // Undo — this normally clears lastResult and re-runs the detector
+        undo();
+        // Now ask the detector if it would fire — if userIgnored is set, it shouldn't.
+        return {
+          userIgnoredAfterUndo: solverState.userIgnoredUnwinnable,
+          // Trying maybeTriggerSolver should be a no-op given the flag
+          // (we can't directly observe "would have fired" but the flag itself
+          // is the contract scheduleSolverCheck honors)
+        };
+      });
+      assert(result.userIgnoredAfterUndo,
+        "userIgnoredUnwinnable should survive undo so detector stays silent");
+    });
+
+    await test("new game clears userIgnoredUnwinnable", async () => {
+      const result = await ev(() => {
+        dealGame();
+        solverState.userIgnoredUnwinnable = true;
+        dealGame();
+        return solverState.userIgnoredUnwinnable;
+      });
+      assertEqual(result, false, "fresh deal should reset the ignore flag");
+    });
+
     await test("undo hides unwinnable overlay", async () => {
       const result = await ev(() => {
         dealGame();

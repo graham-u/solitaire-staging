@@ -42,7 +42,11 @@ let solverState = {
   hasCompletedFirstCycle: false,
   lastResult: null,
   running: false,
-  currentSolveId: 0
+  currentSolveId: 0,
+  // Set when the user dismisses the unwinnable dialog with "Keep trying".
+  // Suppresses the detector for the rest of the deal so undo + replay
+  // doesn't keep nagging them. Cleared on a fresh deal.
+  userIgnoredUnwinnable: false
 };
 
 /* ── Deck ── */
@@ -900,6 +904,13 @@ document.getElementById("btn-unwinnable-new-game").addEventListener("click", () 
   dealGame();
 });
 
+document.getElementById("btn-unwinnable-keep-trying").addEventListener("click", () => {
+  // Suppress the detector for the rest of the deal — undoing back to an
+  // earlier state shouldn't re-nag the user once they've chosen to continue.
+  solverState.userIgnoredUnwinnable = true;
+  hideUnwinnableOverlay();
+});
+
 /* ── Long-press version number to copy game state to clipboard (debug) ── */
 
 (function setupVersionLongPress() {
@@ -1014,6 +1025,7 @@ function resetSolverState() {
   solverState.hasCompletedFirstCycle = false;
   solverState.lastResult = null;
   solverState.running = false;
+  solverState.userIgnoredUnwinnable = false;
   hideUnwinnableOverlay();
 }
 
@@ -1036,6 +1048,9 @@ function scheduleSolverCheck() {
 function maybeTriggerSolver() {
   if (!solverState.hasCompletedFirstCycle) return;
   if (solverState.lastResult === "unwinnable") return;
+  // User said "Keep trying" — respect that for the rest of this deal,
+  // even if they undo back to a fresh-looking state.
+  if (solverState.userIgnoredUnwinnable) return;
   if (solverState.running) return;
 
   // Lazily create worker
