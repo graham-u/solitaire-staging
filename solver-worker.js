@@ -184,7 +184,9 @@ function findAllMoves(s) {
     }
   }
 
-  // Foundation top cards back to tableau (the game allows this)
+  // Foundation top cards back to tableau (the game allows this, but it's
+  // rarely actual progress — it's usually reversible shuffling. Demoted
+  // to the lowest priority so the DFS exhausts productive moves first.)
   for (let fi = 0; fi < 4; fi++) {
     const pile = s.foundations[fi];
     if (pile.length === 0) continue;
@@ -193,7 +195,7 @@ function findAllMoves(s) {
       const col = s.tableau[ti];
       const colTop = col.length > 0 ? col[col.length - 1] : null;
       if (canPlaceOnTableau(card, colTop)) {
-        moves.push({ type: "foundation-to-tableau", fi, ti, priority: 3 });
+        moves.push({ type: "foundation-to-tableau", fi, ti, priority: 6 });
       }
     }
   }
