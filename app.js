@@ -360,89 +360,53 @@ function undo() {
 
 /* ── Hint ── */
 
-function findValidMoves() {
-  const moves = [];
-
-  // Waste top card
-  if (state.waste.length > 0) {
-    const card = state.waste[state.waste.length - 1];
-    for (let i = 0; i < 4; i++) {
-      if (canPlaceOnFoundation(card, state.foundations[i])) {
-        moves.push({ from: "waste", card, toType: "foundation", toIndex: i, priority: 1 });
-      }
-    }
-    for (let i = 0; i < 7; i++) {
-      if (state.tableau[i].length > 0 && canPlaceOnTableau(card, state.tableau[i])) {
-        moves.push({ from: "waste", card, toType: "tableau", toIndex: i, priority: 2 });
-      }
-    }
-  }
-
-  // Tableau cards
-  for (let col = 0; col < 7; col++) {
-    const column = state.tableau[col];
-    if (column.length === 0) continue;
-    const topCard = column[column.length - 1];
-    if (topCard.faceUp) {
-      // Top card to foundation
-      for (let i = 0; i < 4; i++) {
-        if (canPlaceOnFoundation(topCard, state.foundations[i])) {
-          moves.push({ from: "tableau", fromIndex: col, cardIndex: column.length - 1, card: topCard, toType: "foundation", toIndex: i, priority: 1 });
-        }
-      }
-    }
-    // Stack moves (face-up runs)
-    for (let ci = column.length - 1; ci >= 0; ci--) {
-      if (!column[ci].faceUp) break;
-      const card = column[ci];
-      for (let i = 0; i < 7; i++) {
-        if (i === col) continue;
-        if (canPlaceOnTableau(card, state.tableau[i])) {
-          // Skip pointless king moves to empty columns if nothing to reveal
-          if (card.rank === "K" && state.tableau[i].length === 0 && ci === 0) continue;
-          moves.push({ from: "tableau", fromIndex: col, cardIndex: ci, card, toType: "tableau", toIndex: i, priority: 3 });
-        }
-      }
-    }
-  }
-
-  // Draw from stock
-  if (state.stock.length > 0) {
-    moves.push({ from: "stock", toType: "draw", priority: 4 });
-  } else if (state.waste.length > 0) {
-    moves.push({ from: "recycle", toType: "recycle", priority: 5 });
-  }
-
-  moves.sort((a, b) => a.priority - b.priority);
-  return moves;
-}
-
-function showHint() {
+function showHintFromSolverMove(move) {
   clearHint();
-  const moves = findValidMoves();
-  if (moves.length === 0) return;
 
-  const move = moves[0];
+  // Translate the solver's move format to the highlight pattern.
+  const highlight = (selector) => {
+    const el = document.querySelector(selector);
+    if (el) el.classList.add("highlighted");
+  };
+  const highlightTableauTop = (col) => {
+    const column = state.tableau[col];
+    if (column.length === 0) {
+      highlight(`.tableau-column[data-col="${col}"]`);
+    } else {
+      highlight(`.card[data-source="tableau"][data-source-index="${col}"][data-card-index="${column.length - 1}"]`);
+    }
+  };
 
-  if (move.from === "stock") {
-    const stockEl = document.querySelector(".stock-slot");
-    if (stockEl) stockEl.classList.add("highlighted");
-  } else if (move.from === "recycle") {
-    const stockEl = document.querySelector(".stock-slot");
-    if (stockEl) stockEl.classList.add("highlighted");
-  } else if (move.from === "waste") {
-    const wasteCard = document.querySelector('.card[data-source="waste"]');
-    if (wasteCard) wasteCard.classList.add("highlighted");
-    highlightDestination(move);
-  } else if (move.from === "tableau") {
-    const cardEl = document.querySelector(
-      `.card[data-source="tableau"][data-source-index="${move.fromIndex}"][data-card-index="${move.cardIndex}"]`
-    );
-    if (cardEl) cardEl.classList.add("highlighted");
-    highlightDestination(move);
+  switch (move.type) {
+    case "draw":
+    case "recycle":
+      highlight(".stock-slot");
+      break;
+    case "waste-to-foundation":
+      highlight(`.card[data-source="waste"][data-source-index="${state.waste.length - 1}"]`);
+      highlight(`.foundation-slot[data-index="${move.fi}"]`);
+      break;
+    case "waste-to-tableau":
+      highlight(`.card[data-source="waste"][data-source-index="${state.waste.length - 1}"]`);
+      highlightTableauTop(move.ti);
+      break;
+    case "tableau-to-foundation": {
+      const col = state.tableau[move.fromCol];
+      highlight(`.card[data-source="tableau"][data-source-index="${move.fromCol}"][data-card-index="${col.length - 1}"]`);
+      highlight(`.foundation-slot[data-index="${move.fi}"]`);
+      break;
+    }
+    case "foundation-to-tableau":
+      highlight(`.card[data-source="foundation"][data-source-index="${move.fi}"]`);
+      highlightTableauTop(move.ti);
+      break;
+    case "tableau-to-tableau":
+      highlight(`.card[data-source="tableau"][data-source-index="${move.fromCol}"][data-card-index="${move.startIdx}"]`);
+      highlightTableauTop(move.toCol);
+      break;
   }
 
-  hintTimeout = setTimeout(clearHint, 2000);
+  hintTimeout = setTimeout(clearHint, 3000);
 }
 
 function highlightDestination(move) {
@@ -713,7 +677,8 @@ function renderTableau() {
 function overlayActive() {
   return !document.getElementById("win-overlay").classList.contains("hidden") ||
          !document.getElementById("confirm-overlay").classList.contains("hidden") ||
-         !document.getElementById("unwinnable-overlay").classList.contains("hidden");
+         !document.getElementById("unwinnable-overlay").classList.contains("hidden") ||
+         !document.getElementById("hint-overlay").classList.contains("hidden");
 }
 
 let pointerStart = null;
@@ -778,10 +743,97 @@ document.getElementById("btn-confirm-no").addEventListener("click", () => {
   document.getElementById("confirm-overlay").classList.add("hidden");
 });
 
+/* ── Solver-powered hint ── */
+
+let hintRequestId = 0;
+let hintOverlayTimer = null;
+
+function showHintOverlay() {
+  document.getElementById("hint-overlay").classList.remove("hidden");
+}
+
+function hideHintOverlay() {
+  document.getElementById("hint-overlay").classList.add("hidden");
+}
+
+function requestSolverHint() {
+  // Terminate any in-flight worker so the hint doesn't queue behind an
+  // unwinnable-detector search. The unwinnable detector will retry later.
+  if (solverWorker) {
+    solverWorker.terminate();
+    solverWorker = null;
+    solverState.running = false;
+  }
+  if (typeof Worker === "undefined") return;
+  solverWorker = new Worker("solver-worker.js");
+  solverWorker.onmessage = handleSolverMessage;
+  solverWorker.onerror = function() {
+    solverState.running = false;
+    solverWorker = null;
+    cancelHintRequest();
+  };
+
+  hintRequestId++;
+  const reqId = hintRequestId;
+
+  // Only show the loading overlay if the search hasn't returned in 300ms.
+  hintOverlayTimer = setTimeout(() => {
+    if (reqId === hintRequestId) showHintOverlay();
+  }, 300);
+
+  solverWorker.postMessage({
+    type: "solve-trace",
+    state: {
+      stock: state.stock,
+      waste: state.waste,
+      foundations: state.foundations,
+      tableau: state.tableau,
+      recycleCount: state.recycleCount
+    },
+    timeLimit: 15000,
+    solveId: reqId
+  });
+}
+
+function cancelHintRequest() {
+  hintRequestId++;  // invalidates in-flight result
+  if (hintOverlayTimer) { clearTimeout(hintOverlayTimer); hintOverlayTimer = null; }
+  hideHintOverlay();
+  // Terminate the worker so the search actually stops (rather than finishing in the background).
+  if (solverWorker) {
+    solverWorker.terminate();
+    solverWorker = null;
+    solverState.running = false;
+  }
+}
+
+function handleSolverMessage(e) {
+  const msg = e.data;
+  if (msg.type === "result") {
+    // From the unwinnable detector — existing flow.
+    if (msg.solveId !== solverState.currentSolveId) return;
+    solverState.running = false;
+    solverState.lastResult = msg.outcome;
+    if (msg.outcome === "unwinnable") showUnwinnableOverlay();
+  } else if (msg.type === "trace-result") {
+    if (msg.solveId !== hintRequestId) return;
+    if (hintOverlayTimer) { clearTimeout(hintOverlayTimer); hintOverlayTimer = null; }
+    hideHintOverlay();
+    if (msg.outcome === "winnable" && msg.firstMove) {
+      showHintFromSolverMove(msg.firstMove);
+    } else if (msg.outcome === "unwinnable") {
+      showUnwinnableOverlay();
+    }
+    // On timeout we do nothing — the user can tap Hint again later.
+  }
+}
+
 document.getElementById("btn-hint").addEventListener("click", () => {
   if (overlayActive()) return;
-  showHint();
+  requestSolverHint();
 });
+
+document.getElementById("btn-hint-cancel").addEventListener("click", cancelHintRequest);
 
 document.getElementById("btn-undo").addEventListener("click", () => {
   if (overlayActive()) return;
@@ -939,18 +991,7 @@ function maybeTriggerSolver() {
   // Lazily create worker
   if (!solverWorker && typeof Worker !== "undefined") {
     solverWorker = new Worker("solver-worker.js");
-    solverWorker.onmessage = function(e) {
-      const msg = e.data;
-      if (msg.type === "result") {
-        // Ignore stale results entirely
-        if (msg.solveId !== solverState.currentSolveId) return;
-        solverState.running = false;
-        solverState.lastResult = msg.outcome;
-        if (msg.outcome === "unwinnable") {
-          showUnwinnableOverlay();
-        }
-      }
-    };
+    solverWorker.onmessage = handleSolverMessage;
     solverWorker.onerror = function() {
       // Worker crashed — reset state so the solver doesn't stay stuck
       solverState.running = false;

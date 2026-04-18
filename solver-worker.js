@@ -103,7 +103,7 @@ function isSafeFoundationMove(card, foundations) {
   return oppSuits.every(s => fRanks[s] >= rv - 1);
 }
 
-function applyDominanceMoves(s) {
+function applyDominanceMoves(s, recordedMoves) {
   let changed = true;
   while (changed) {
     changed = false;
@@ -114,6 +114,7 @@ function applyDominanceMoves(s) {
       for (let i = 0; i < 4; i++) {
         const fTop = s.foundations[i].length > 0 ? s.foundations[i][s.foundations[i].length - 1] : null;
         if (canPlaceOnFoundation(card, fTop) && isSafeFoundationMove(card, s.foundations)) {
+          if (recordedMoves) recordedMoves.push({ type: "waste-to-foundation", fi: i });
           s.waste.pop();
           s.foundations[i].push(card);
           changed = true;
@@ -131,6 +132,7 @@ function applyDominanceMoves(s) {
       for (let i = 0; i < 4; i++) {
         const fTop = s.foundations[i].length > 0 ? s.foundations[i][s.foundations[i].length - 1] : null;
         if (canPlaceOnFoundation(card, fTop) && isSafeFoundationMove(card, s.foundations)) {
+          if (recordedMoves) recordedMoves.push({ type: "tableau-to-foundation", fromCol: col, fi: i });
           column.pop();
           s.foundations[i].push(card);
           // Auto-flip
@@ -371,6 +373,47 @@ function solve(initialState, timeLimit) {
   return "unwinnable";
 }
 
+/* ── Solver with path tracking (returns the first move on a winning path) ── */
+
+function solveTrace(initialState, timeLimit) {
+  const visited = new Set();
+  const startTime = performance.now();
+  const maxVisited = 500000;
+  const maxDepth = 2000;
+
+  function dfs(s, path) {
+    if (path.length > maxDepth) return false;
+    const preDomLen = path.length;
+    applyDominanceMoves(s, path);
+    if (isWon(s)) return path.slice();
+    if (performance.now() - startTime > timeLimit) return "timeout";
+    const hash = hashState(s);
+    if (visited.has(hash)) { path.length = preDomLen; return false; }
+    if (visited.size >= maxVisited) return "timeout";
+    visited.add(hash);
+    const moves = findAllMoves(s);
+    for (const move of moves) {
+      const child = cloneState(s);
+      applyMove(child, move);
+      path.push(move);
+      const r = dfs(child, path);
+      if (r === "timeout") return "timeout";
+      if (Array.isArray(r)) return r;
+      path.pop();
+    }
+    path.length = preDomLen;
+    return false;
+  }
+
+  const root = cloneState(initialState);
+  root.recycleCount = 0;
+  const result = dfs(root, []);
+
+  if (result === "timeout") return { outcome: "timeout" };
+  if (!Array.isArray(result) || result.length === 0) return { outcome: "unwinnable" };
+  return { outcome: "winnable", firstMove: result[0], pathLength: result.length };
+}
+
 /* ── Worker message handling ── */
 
 self.onmessage = function(e) {
@@ -378,5 +421,8 @@ self.onmessage = function(e) {
   if (msg.type === "solve") {
     const outcome = solve(msg.state, msg.timeLimit || 3000);
     self.postMessage({ type: "result", outcome, solveId: msg.solveId });
+  } else if (msg.type === "solve-trace") {
+    const result = solveTrace(msg.state, msg.timeLimit || 10000);
+    self.postMessage({ type: "trace-result", ...result, solveId: msg.solveId });
   }
 };

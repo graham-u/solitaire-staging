@@ -192,24 +192,21 @@ export default async function run() {
       assertEqual(result, true, "undo button should be disabled");
     });
 
-    await test("hint finds valid moves", async () => {
-      const result = await ev(() => {
+    await test("hint button highlights elements via the solver", async () => {
+      const highlightedCount = await ev(async () => {
         dealGame();
-        const moves = findValidMoves();
-        return { count: moves.length, hasMove: moves.length > 0 };
-      });
-      assert(result.hasMove, "should find at least one valid move");
-    });
-
-    await test("hint highlights elements", async () => {
-      const result = await ev(() => {
-        dealGame();
-        showHint();
+        document.getElementById("btn-hint").click();
+        // Wait up to 15 s for highlights to appear (solver runs in a worker).
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+          if (document.querySelectorAll(".highlighted").length > 0) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
         const count = document.querySelectorAll(".highlighted").length;
         clearHint();
         return count;
       });
-      assert(result > 0, "hint should highlight at least one element");
+      assert(highlightedCount > 0, "hint should highlight at least one element");
     });
 
     await test("win detection triggers on full foundations", async () => {
