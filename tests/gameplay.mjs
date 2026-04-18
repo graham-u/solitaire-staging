@@ -192,24 +192,28 @@ export default async function run() {
       assertEqual(result, true, "undo button should be disabled");
     });
 
-    await test("hint button highlights source & destination via the solver", async () => {
+    await test("hint button shows a highlight or honest no-path dialog", async () => {
       const result = await ev(async () => {
         dealGame();
         document.getElementById("btn-hint").click();
-        const deadline = Date.now() + 15000;
+        const deadline = Date.now() + 35000;
         const q = () => ({
           source: document.querySelectorAll(".highlighted-source").length,
-          dest: document.querySelectorAll(".highlighted-dest").length
+          dest: document.querySelectorAll(".highlighted-dest").length,
+          nopath: !document.getElementById("hint-nopath-overlay").classList.contains("hidden")
         });
         while (Date.now() < deadline) {
-          if (q().source > 0 || q().dest > 0) break;
+          const s = q();
+          if (s.source > 0 || s.dest > 0 || s.nopath) break;
           await new Promise((r) => setTimeout(r, 50));
         }
         const snap = q();
         clearHint();
+        document.getElementById("hint-nopath-overlay").classList.add("hidden");
         return snap;
       });
-      assert(result.source > 0 || result.dest > 0, "hint should highlight at least one element");
+      assert(result.source > 0 || result.dest > 0 || result.nopath,
+        "hint should either highlight a move or show the no-path dialog");
     });
 
     await test("win detection triggers on full foundations", async () => {

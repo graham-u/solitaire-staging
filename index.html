@@ -30,7 +30,7 @@
     <button id="btn-undo" disabled>Undo</button>
   </nav>
 
-  <div id="version">v22</div>
+  <div id="version">v23</div>
 
   <div id="win-overlay" class="hidden">
     <div id="win-dialog">
@@ -55,6 +55,13 @@
       <div class="hint-spinner"></div>
       <p>Finding the best move…</p>
       <button id="btn-hint-cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div id="hint-nopath-overlay" class="hidden">
+    <div id="hint-nopath-dialog">
+      <p>This position is tricky — I couldn't find a clear next move in the time I had. Try making a move yourself, and I'll try again next time.</p>
+      <button id="btn-hint-nopath-ok">OK</button>
     </div>
   </div>
 

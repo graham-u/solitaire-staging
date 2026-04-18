@@ -508,6 +508,43 @@ body {
   cursor: pointer;
 }
 
+#hint-nopath-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+#hint-nopath-dialog {
+  background: white;
+  border-radius: 16px;
+  padding: 32px 40px;
+  text-align: center;
+  max-width: 360px;
+  width: 85%;
+}
+
+#hint-nopath-dialog p {
+  font-size: 19px;
+  color: #333;
+  margin: 0 0 24px 0;
+  line-height: 1.45;
+}
+
+#btn-hint-nopath-ok {
+  background: #2d7a3a;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 40px;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* Confirm overlay */
 #confirm-overlay {
   position: fixed;

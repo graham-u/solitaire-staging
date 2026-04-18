@@ -679,7 +679,8 @@ function overlayActive() {
   return !document.getElementById("win-overlay").classList.contains("hidden") ||
          !document.getElementById("confirm-overlay").classList.contains("hidden") ||
          !document.getElementById("unwinnable-overlay").classList.contains("hidden") ||
-         !document.getElementById("hint-overlay").classList.contains("hidden");
+         !document.getElementById("hint-overlay").classList.contains("hidden") ||
+         !document.getElementById("hint-nopath-overlay").classList.contains("hidden");
 }
 
 let pointerStart = null;
@@ -757,6 +758,14 @@ function hideHintOverlay() {
   document.getElementById("hint-overlay").classList.add("hidden");
 }
 
+function showHintNoPathOverlay() {
+  document.getElementById("hint-nopath-overlay").classList.remove("hidden");
+}
+
+function hideHintNoPathOverlay() {
+  document.getElementById("hint-nopath-overlay").classList.add("hidden");
+}
+
 /* Cached winning plan. Lets subsequent hint taps advance through a single
    coherent sequence instead of the solver returning a different winning
    path each call (which causes apparent oscillation between reversible
@@ -824,7 +833,7 @@ function requestSolverHint() {
       tableau: state.tableau,
       recycleCount: state.recycleCount
     },
-    timeLimit: 15000,
+    timeLimit: 30000,
     solveId: reqId
   });
 }
@@ -857,8 +866,12 @@ function handleSolverMessage(e) {
     } else if (msg.outcome === "unwinnable") {
       cachedPlan = null;
       showUnwinnableOverlay();
+    } else if (msg.outcome === "timeout") {
+      // Search exhausted its time/memory budget without proving winnability.
+      // Tell the user honestly rather than dismissing the dialog silently.
+      cachedPlan = null;
+      showHintNoPathOverlay();
     }
-    // On timeout we do nothing — the user can tap Hint again later.
   }
 }
 
@@ -868,6 +881,8 @@ document.getElementById("btn-hint").addEventListener("click", () => {
 });
 
 document.getElementById("btn-hint-cancel").addEventListener("click", cancelHintRequest);
+
+document.getElementById("btn-hint-nopath-ok").addEventListener("click", hideHintNoPathOverlay);
 
 document.getElementById("btn-undo").addEventListener("click", () => {
   if (overlayActive()) return;
