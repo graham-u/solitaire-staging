@@ -58,6 +58,8 @@ gh run watch <run_id> --exit-status
 
 **Never push directly to production without deploying to staging first.** The production URL is installed as a PWA on the end user's tablet.
 
+**Always confirm with the user before pushing to *either* remote.** Staging is live for tablet testing, and production is running on the end user's device — both are shared systems. Neither should be pushed to on a whim, even if the changes look ready and tests pass. This applies to `git push staging main` and `git push origin main` alike.
+
 ## Testing Locally
 
 ```bash
