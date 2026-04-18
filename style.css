@@ -523,6 +523,37 @@ body {
   cursor: pointer;
 }
 
+/* Long-press progress bar (top of screen) — used to signal that the
+   long-press auto-solve gesture is being recognised. Subtle: 2 px high. */
+#long-press-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  background: #ffd700;
+  transform-origin: left center;
+  transform: scaleX(0);
+  pointer-events: none;
+  z-index: 200;
+  opacity: 0.85;
+}
+
+#long-press-progress.holding {
+  animation: long-press-fill 5s linear forwards;
+}
+
+@keyframes long-press-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* When the hint button is showing "Stop" during auto-play, swap colour
+   so the affordance is unmistakable. */
+#btn-hint.stop-mode {
+  background: #c62828;
+}
+
 #hint-nopath-overlay {
   position: fixed;
   inset: 0;

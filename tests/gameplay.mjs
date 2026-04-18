@@ -195,7 +195,7 @@ export default async function run() {
     await test("hint button shows a highlight or honest no-path dialog", async () => {
       const result = await ev(async () => {
         dealGame();
-        document.getElementById("btn-hint").click();
+        requestSolverHint();
         const deadline = Date.now() + 35000;
         const q = () => ({
           source: document.querySelectorAll(".highlighted-source").length,
@@ -214,6 +214,51 @@ export default async function run() {
       });
       assert(result.source > 0 || result.dest > 0 || result.nopath,
         "hint should either highlight a move or show the no-path dialog");
+    });
+
+    await test("applySolverMove dispatches each move type and pushes undo", async () => {
+      const result = await ev(() => {
+        dealGame();
+        // Set up a known position with at least an Ace to play
+        state.tableau = [[], [], [], [], [], [], []];
+        state.tableau[0] = [{ suit: "clubs", rank: "A", faceUp: true }];
+        state.foundations = [[], [], [], []];
+        state.stock = [];
+        state.waste = [];
+        const undoBefore = undoStack.length;
+        applySolverMove({ type: "tableau-to-foundation", fromCol: 0, fi: 0 });
+        return {
+          foundationLen: state.foundations[0].length,
+          tableauEmpty: state.tableau[0].length === 0,
+          undoGrew: undoStack.length === undoBefore + 1,
+          movesIncremented: state.moves > 0
+        };
+      });
+      assert(result.foundationLen === 1, "Ace should land on foundation");
+      assert(result.tableauEmpty, "tableau column should be empty");
+      assert(result.undoGrew, "undo entry should be pushed");
+      assert(result.movesIncremented, "move count should increment");
+    });
+
+    await test("startAutoPlay puts moves in queue and stopAutoPlay clears", async () => {
+      const result = await ev(() => {
+        dealGame();
+        // Use a tiny synthetic plan
+        startAutoPlay([{ type: "draw" }, { type: "draw" }]);
+        const playingDuring = autoPlayState.playing;
+        const queueLen = autoPlayState.queue.length;
+        const buttonText = document.getElementById("btn-hint").textContent;
+        stopAutoPlay();
+        return {
+          playingDuring, queueLen, buttonText,
+          playingAfter: autoPlayState.playing,
+          buttonAfter: document.getElementById("btn-hint").textContent
+        };
+      });
+      assert(result.playingDuring, "playing flag should be true during auto-play");
+      assert(result.buttonText === "Stop", "hint button should show Stop");
+      assert(!result.playingAfter, "playing flag should be false after stop");
+      assert(result.buttonAfter === "Hint", "hint button should revert to Hint");
     });
 
     await test("win detection triggers on full foundations", async () => {

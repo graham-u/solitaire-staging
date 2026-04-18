@@ -684,7 +684,8 @@ function overlayActive() {
          !document.getElementById("confirm-overlay").classList.contains("hidden") ||
          !document.getElementById("unwinnable-overlay").classList.contains("hidden") ||
          !document.getElementById("hint-overlay").classList.contains("hidden") ||
-         !document.getElementById("hint-nopath-overlay").classList.contains("hidden");
+         !document.getElementById("hint-nopath-overlay").classList.contains("hidden") ||
+         (typeof autoPlayState !== "undefined" && autoPlayState.playing);
 }
 
 let pointerStart = null;
@@ -795,16 +796,33 @@ function nextMoveFromCachedPlan() {
 
 function clearCachedPlan() { cachedPlan = null; }
 
-function requestSolverHint() {
-  // Try to serve from the cached plan first — only kicks off a fresh search
-  // if the current state doesn't sit anywhere on the last computed path.
-  const cached = nextMoveFromCachedPlan();
-  if (cached) {
-    showHintFromSolverMove(cached);
-    return;
+function remainingMovesFromCachedPlan() {
+  if (!cachedPlan) return null;
+  const snap = canonicalCurrentState();
+  const i = cachedPlan.snapshots.indexOf(snap);
+  if (i === -1) return null;
+  return cachedPlan.moves.slice(i);
+}
+
+// Tracks whether the current solve-trace request was kicked off as a single
+// hint or a full auto-solve, so handleSolverMessage routes the result.
+let solverPathMode = "hint";
+
+function requestSolverPath(mode) {
+  solverPathMode = mode;
+
+  if (mode === "hint") {
+    const cached = nextMoveFromCachedPlan();
+    if (cached) { showHintFromSolverMove(cached); return; }
+  } else { // autosolve
+    const cachedRemaining = remainingMovesFromCachedPlan();
+    if (cachedRemaining && cachedRemaining.length > 0) {
+      startAutoPlay(cachedRemaining);
+      return;
+    }
   }
 
-  // Terminate any in-flight worker so the hint doesn't queue behind an
+  // Terminate any in-flight worker so the request doesn't queue behind an
   // unwinnable-detector search. The unwinnable detector will retry later.
   if (solverWorker) {
     solverWorker.terminate();
@@ -823,6 +841,8 @@ function requestSolverHint() {
   hintRequestId++;
   const reqId = hintRequestId;
 
+  setHintDialogMessage(mode === "autosolve" ? "Solving the game…" : "Finding the best move…");
+
   // Only show the loading overlay if the search hasn't returned in 300ms.
   hintOverlayTimer = setTimeout(() => {
     if (reqId === hintRequestId) showHintOverlay();
@@ -840,6 +860,14 @@ function requestSolverHint() {
     timeLimit: 30000,
     solveId: reqId
   });
+}
+
+function requestSolverHint() { requestSolverPath("hint"); }
+function requestSolverAutoSolve() { requestSolverPath("autosolve"); }
+
+function setHintDialogMessage(text) {
+  const p = document.querySelector("#hint-dialog p");
+  if (p) p.textContent = text;
 }
 
 function cancelHintRequest() {
@@ -866,7 +894,8 @@ function handleSolverMessage(e) {
     hideHintOverlay();
     if (msg.outcome === "winnable" && msg.moves && msg.moves.length > 0) {
       cachedPlan = { moves: msg.moves, snapshots: msg.snapshots };
-      showHintFromSolverMove(msg.moves[0]);
+      if (solverPathMode === "autosolve") startAutoPlay(msg.moves);
+      else showHintFromSolverMove(msg.moves[0]);
     } else if (msg.outcome === "unwinnable") {
       cachedPlan = null;
       showUnwinnableOverlay();
@@ -879,10 +908,152 @@ function handleSolverMessage(e) {
   }
 }
 
-document.getElementById("btn-hint").addEventListener("click", () => {
+/* ── Auto-play (long-press hint) ── */
+
+const AUTOPLAY_INTERVAL_MS = 333;     // 3 moves per second
+const LONG_PRESS_HOLD_MS = 5000;      // 5 s hold to trigger auto-solve
+
+let autoPlayState = { playing: false, intervalId: null, queue: [] };
+
+function applySolverMove(move) {
+  // Reuse the existing user-action helpers where possible so each move
+  // pushes a normal undo entry, increments score/moves, persists state, etc.
+  if (move.type === "draw") { drawFromStock(); return; }
+  if (move.type === "recycle") { recycleWaste(); return; }
+
+  pushUndo();
+  startTimerIfNeeded();
+  switch (move.type) {
+    case "waste-to-foundation": {
+      const card = state.waste[state.waste.length - 1];
+      moveCardToFoundation(card, state.waste, move.fi);
+      break;
+    }
+    case "waste-to-tableau": {
+      const card = state.waste[state.waste.length - 1];
+      state.score += 5;
+      moveCardToTableau(card, state.waste, move.ti);
+      break;
+    }
+    case "tableau-to-foundation": {
+      const col = state.tableau[move.fromCol];
+      const card = col[col.length - 1];
+      moveCardToFoundation(card, col, move.fi);
+      autoFlipTableau(move.fromCol);
+      break;
+    }
+    case "foundation-to-tableau": {
+      const pile = state.foundations[move.fi];
+      const card = pile.pop();
+      state.tableau[move.ti].push(card);
+      state.score = Math.max(0, state.score - 15);
+      break;
+    }
+    case "tableau-to-tableau": {
+      moveStackToTableau(move.fromCol, move.startIdx, move.toCol);
+      autoFlipTableau(move.fromCol);
+      break;
+    }
+  }
+  state.moves++;
+  render();
+  checkWin();
+  saveState();
+}
+
+function startAutoPlay(moves) {
+  hideHintOverlay();
+  autoPlayState.playing = true;
+  autoPlayState.queue = moves.slice();
+  setHintButtonStopMode(true);
+  // Play the first move immediately so the user sees something happen
+  // without waiting a full 333 ms after the dialog closes.
+  playNextAutoMove();
+  if (autoPlayState.playing) {
+    autoPlayState.intervalId = setInterval(playNextAutoMove, AUTOPLAY_INTERVAL_MS);
+  }
+}
+
+function playNextAutoMove() {
+  if (!autoPlayState.playing) return;
+  if (autoPlayState.queue.length === 0) { stopAutoPlay(); return; }
+  const move = autoPlayState.queue.shift();
+  applySolverMove(move);
+  if (autoPlayState.queue.length === 0) stopAutoPlay();
+}
+
+function stopAutoPlay() {
+  if (autoPlayState.intervalId !== null) {
+    clearInterval(autoPlayState.intervalId);
+    autoPlayState.intervalId = null;
+  }
+  autoPlayState.playing = false;
+  autoPlayState.queue = [];
+  setHintButtonStopMode(false);
+}
+
+function setHintButtonStopMode(stop) {
+  const btn = document.getElementById("btn-hint");
+  btn.textContent = stop ? "Stop" : "Hint";
+  btn.classList.toggle("stop-mode", stop);
+}
+
+/* ── Long-press detection on the hint button ── */
+
+let hintHoldTimer = null;
+let hintLongPressFired = false;
+
+function showLongPressProgress() {
+  const bar = document.getElementById("long-press-progress");
+  // Restart the CSS animation by removing the class, forcing a reflow,
+  // and re-adding it. Without the reflow the browser may coalesce the
+  // class toggle and skip restarting.
+  bar.classList.remove("holding");
+  void bar.offsetHeight;
+  bar.classList.add("holding");
+}
+
+function hideLongPressProgress() {
+  document.getElementById("long-press-progress").classList.remove("holding");
+}
+
+function cancelHintHold() {
+  if (hintHoldTimer !== null) {
+    clearTimeout(hintHoldTimer);
+    hintHoldTimer = null;
+  }
+  hideLongPressProgress();
+}
+
+const hintBtn = document.getElementById("btn-hint");
+
+hintBtn.addEventListener("pointerdown", (e) => {
+  // If we're currently auto-playing, pointerdown is the start of a Stop tap;
+  // don't kick off a new long-press.
+  if (autoPlayState.playing) return;
+  if (overlayActive()) return;
+  hintLongPressFired = false;
+  showLongPressProgress();
+  hintHoldTimer = setTimeout(() => {
+    hintHoldTimer = null;
+    hintLongPressFired = true;
+    hideLongPressProgress();
+    requestSolverAutoSolve();
+  }, LONG_PRESS_HOLD_MS);
+});
+
+hintBtn.addEventListener("pointerup", () => {
+  // Release of the long-press itself: the long-press already kicked off
+  // auto-solve; this pointerup must not be misread as a Stop tap.
+  if (hintLongPressFired) { hintLongPressFired = false; return; }
+  if (autoPlayState.playing) { stopAutoPlay(); return; }
+  cancelHintHold();
   if (overlayActive()) return;
   requestSolverHint();
 });
+
+hintBtn.addEventListener("pointerleave", cancelHintHold);
+hintBtn.addEventListener("pointercancel", cancelHintHold);
 
 document.getElementById("btn-hint-cancel").addEventListener("click", cancelHintRequest);
 
@@ -1027,6 +1198,7 @@ function resetSolverState() {
   solverState.running = false;
   solverState.userIgnoredUnwinnable = false;
   hideUnwinnableOverlay();
+  if (typeof autoPlayState !== "undefined" && autoPlayState.playing) stopAutoPlay();
 }
 
 function hideUnwinnableOverlay() {
@@ -1051,6 +1223,7 @@ function maybeTriggerSolver() {
   // User said "Keep trying" — respect that for the rest of this deal,
   // even if they undo back to a fresh-looking state.
   if (solverState.userIgnoredUnwinnable) return;
+  if (autoPlayState.playing) return;
   if (solverState.running) return;
 
   // Lazily create worker
