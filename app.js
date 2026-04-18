@@ -360,53 +360,119 @@ function undo() {
 
 /* ── Hint ── */
 
+const SUIT_SYMBOLS_HINT = { clubs: "♣", diamonds: "♦", hearts: "♥", spades: "♠" };
+
+function cardLabel(card) {
+  return card ? `${card.rank}${SUIT_SYMBOLS_HINT[card.suit]}` : "?";
+}
+
+function describeSolverMove(move) {
+  const w = state.waste;
+  const f = state.foundations;
+  const t = state.tableau;
+  switch (move.type) {
+    case "draw":
+      return "Turn over a card from the stock";
+    case "recycle":
+      return "Reset the stock — tap it to cycle the waste back";
+    case "waste-to-foundation":
+      return `Send ${cardLabel(w[w.length - 1])} from the waste up to the foundation`;
+    case "waste-to-tableau": {
+      const destTop = t[move.ti][t[move.ti].length - 1];
+      return `Move ${cardLabel(w[w.length - 1])} from the waste onto ${cardLabel(destTop)}`;
+    }
+    case "tableau-to-foundation": {
+      const col = t[move.fromCol];
+      return `Send ${cardLabel(col[col.length - 1])} up to the foundation`;
+    }
+    case "foundation-to-tableau": {
+      const src = f[move.fi][f[move.fi].length - 1];
+      const destTop = t[move.ti][t[move.ti].length - 1];
+      const where = destTop ? `onto ${cardLabel(destTop)}` : `into the empty column`;
+      return `Bring ${cardLabel(src)} back down from the foundation ${where}`;
+    }
+    case "tableau-to-tableau": {
+      const fromCol = t[move.fromCol];
+      const bottom = fromCol[move.startIdx];
+      const top = fromCol[fromCol.length - 1];
+      const destCol = t[move.toCol];
+      const destTop = destCol[destCol.length - 1];
+      const stackLabel = bottom === top ? cardLabel(bottom) : `${cardLabel(bottom)}…${cardLabel(top)}`;
+      const where = destTop ? `onto ${cardLabel(destTop)}` : `into the empty column`;
+      return `Move ${stackLabel} ${where}`;
+    }
+  }
+  return "";
+}
+
 function showHintFromSolverMove(move) {
   clearHint();
 
-  // Translate the solver's move format to the highlight pattern.
-  const highlight = (selector) => {
+  const highlightSource = (selector) => {
     const el = document.querySelector(selector);
-    if (el) el.classList.add("highlighted");
+    if (el) el.classList.add("highlighted-source");
   };
-  const highlightTableauTop = (col) => {
+  const highlightDest = (selector) => {
+    const el = document.querySelector(selector);
+    if (el) el.classList.add("highlighted-dest");
+  };
+  const highlightDestTableauTop = (col) => {
     const column = state.tableau[col];
-    if (column.length === 0) {
-      highlight(`.tableau-column[data-col="${col}"]`);
-    } else {
-      highlight(`.card[data-source="tableau"][data-source-index="${col}"][data-card-index="${column.length - 1}"]`);
-    }
+    if (column.length === 0) highlightDest(`.tableau-column[data-col="${col}"]`);
+    else highlightDest(`.card[data-source="tableau"][data-source-index="${col}"][data-card-index="${column.length - 1}"]`);
   };
 
   switch (move.type) {
     case "draw":
     case "recycle":
-      highlight(".stock-slot");
+      highlightSource(".stock-slot");
       break;
     case "waste-to-foundation":
-      highlight(`.card[data-source="waste"][data-source-index="${state.waste.length - 1}"]`);
-      highlight(`.foundation-slot[data-index="${move.fi}"]`);
+      highlightSource(`.card[data-source="waste"][data-source-index="${state.waste.length - 1}"]`);
+      highlightDest(`.foundation-slot[data-index="${move.fi}"]`);
       break;
     case "waste-to-tableau":
-      highlight(`.card[data-source="waste"][data-source-index="${state.waste.length - 1}"]`);
-      highlightTableauTop(move.ti);
+      highlightSource(`.card[data-source="waste"][data-source-index="${state.waste.length - 1}"]`);
+      highlightDestTableauTop(move.ti);
       break;
     case "tableau-to-foundation": {
       const col = state.tableau[move.fromCol];
-      highlight(`.card[data-source="tableau"][data-source-index="${move.fromCol}"][data-card-index="${col.length - 1}"]`);
-      highlight(`.foundation-slot[data-index="${move.fi}"]`);
+      highlightSource(`.card[data-source="tableau"][data-source-index="${move.fromCol}"][data-card-index="${col.length - 1}"]`);
+      highlightDest(`.foundation-slot[data-index="${move.fi}"]`);
       break;
     }
     case "foundation-to-tableau":
-      highlight(`.card[data-source="foundation"][data-source-index="${move.fi}"]`);
-      highlightTableauTop(move.ti);
+      highlightSource(`.card[data-source="foundation"][data-source-index="${move.fi}"]`);
+      highlightDestTableauTop(move.ti);
       break;
     case "tableau-to-tableau":
-      highlight(`.card[data-source="tableau"][data-source-index="${move.fromCol}"][data-card-index="${move.startIdx}"]`);
-      highlightTableauTop(move.toCol);
+      highlightSource(`.card[data-source="tableau"][data-source-index="${move.fromCol}"][data-card-index="${move.startIdx}"]`);
+      highlightDestTableauTop(move.toCol);
       break;
   }
 
-  hintTimeout = setTimeout(clearHint, 3000);
+  showHintMessage(describeSolverMove(move));
+  hintTimeout = setTimeout(clearHint, 6000);
+}
+
+function showHintMessage(text) {
+  if (!text) return;
+  let el = document.getElementById("hint-message");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "hint-message";
+    document.body.appendChild(el);
+  }
+  el.innerHTML =
+    `<span class="hint-legend-swatch source"></span>from &nbsp;→&nbsp; ` +
+    `<span class="hint-legend-swatch dest"></span>to<br>${text}`;
+  void el.offsetWidth; // force reflow so the fade-in transitions
+  el.classList.add("visible");
+}
+
+function hideHintMessage() {
+  const el = document.getElementById("hint-message");
+  if (el) el.classList.remove("visible");
 }
 
 function highlightDestination(move) {
@@ -428,11 +494,13 @@ function highlightDestination(move) {
 }
 
 function clearHint() {
+  hideHintMessage();
+  document.querySelectorAll(".highlighted-source, .highlighted-dest")
+    .forEach(el => el.classList.remove("highlighted-source", "highlighted-dest"));
   if (hintTimeout) {
     clearTimeout(hintTimeout);
     hintTimeout = null;
   }
-  document.querySelectorAll(".highlighted").forEach(el => el.classList.remove("highlighted"));
 }
 
 /* ── Win ── */
