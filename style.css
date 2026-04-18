@@ -266,18 +266,29 @@ body {
   height: var(--card-height);
 }
 
-/* Highlighted card (hint) — source and destination differentiated by colour */
+/* Highlighted card (hint) — source pulses in gold to draw the eye first;
+   destination is a quieter dashed green outline. */
 .card.highlighted-source,
 .slot.highlighted-source {
-  box-shadow: 0 0 0 4px #ffd700, 0 0 14px 5px rgba(255, 215, 0, 0.6);
+  animation: pulse-source 1.1s ease-in-out infinite;
   z-index: 5;
+}
+
+@keyframes pulse-source {
+  0%, 100% {
+    box-shadow: 0 0 0 4px #ffd700, 0 0 10px 3px rgba(255, 215, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px #ffd700, 0 0 24px 9px rgba(255, 215, 0, 0.95);
+  }
 }
 
 .card.highlighted-dest,
 .slot.highlighted-dest,
 .tableau-column.highlighted-dest {
-  box-shadow: 0 0 0 4px #3ec36b, 0 0 14px 5px rgba(62, 195, 107, 0.55);
-  z-index: 5;
+  outline: 3px dashed rgba(62, 195, 107, 0.85);
+  outline-offset: 2px;
+  z-index: 4;
 }
 
 
