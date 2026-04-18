@@ -397,7 +397,7 @@ function showHintFromSolverMove(move) {
       break;
     }
     case "foundation-to-tableau":
-      highlightSource(`.card[data-source="foundation"][data-source-index="${move.fi}"]`);
+      highlightSource(`.foundation-slot[data-index="${move.fi}"]`);
       highlightDestTableauTop(move.ti);
       break;
     case "tableau-to-tableau":
