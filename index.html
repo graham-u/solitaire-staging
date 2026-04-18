@@ -30,7 +30,7 @@
     <button id="btn-undo" disabled>Undo</button>
   </nav>
 
-  <div id="version">v19</div>
+  <div id="version">v20</div>
 
   <div id="win-overlay" class="hidden">
     <div id="win-dialog">
@@ -72,7 +72,12 @@
   <script>
     if ("serviceWorker" in navigator) {
       const hadController = !!navigator.serviceWorker.controller;
-      navigator.serviceWorker.register("sw.js").then((reg) => {
+      // updateViaCache: 'none' forces the browser to always fetch sw.js from the
+      // network when checking for updates. Without this, a stale sw.js can sit
+      // in the HTTP cache for up to 24 h and the new service worker never
+      // installs — leading to situations where index.html updates but the
+      // subresources it depends on stay on the previous version.
+      navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((reg) => {
         reg.update();
       });
       let refreshing = false;
