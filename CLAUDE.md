@@ -102,4 +102,4 @@ The target user is an elderly person in the UK. UI should be clear, simple, with
 
 ## Device & Orientation
 
-The app runs as a PWA on a tablet in **portrait mode**. Always test and evaluate layout in portrait orientation.
+The app runs as a PWA on an **Android** tablet in **portrait mode**. Always test and evaluate layout in portrait orientation. iOS / Safari quirks are not a concern — target Chrome / Android WebView behaviour only.

@@ -1082,25 +1082,20 @@ document.getElementById("btn-unwinnable-keep-trying").addEventListener("click", 
   hideUnwinnableOverlay();
 });
 
-/* ── Long-press version number to copy game state to clipboard (debug) ── */
+/* ── Triple-tap version number to copy game state to clipboard (debug) ── */
 
-(function setupVersionLongPress() {
+(function setupVersionTripleTap() {
   const versionEl = document.getElementById("version");
   if (!versionEl) return;
 
-  const LONG_PRESS_MS = 800;
-  const MOVE_TOLERANCE_PX = 10;
-  let pressStart = 0;
-  let active = false;
-  let startX = 0;
-  let startY = 0;
+  const TAP_WINDOW_MS = 600;
+  let tapTimes = [];
 
   function showToast(text) {
     const toast = document.createElement("div");
     toast.className = "debug-toast";
     toast.textContent = text;
     document.body.appendChild(toast);
-    // Force reflow, then trigger fade-in
     void toast.offsetWidth;
     toast.classList.add("visible");
     setTimeout(() => {
@@ -1109,14 +1104,11 @@ document.getElementById("btn-unwinnable-keep-trying").addEventListener("click", 
     }, 1200);
   }
 
-  function copyState() {
-    const payload = localStorage.getItem("solitaire-state") || "";
+  function writeClipboard(payload) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(payload).then(
-        () => showToast("Game state copied"),
-        () => showToast("Copy failed")
-      );
-    } else {
+      return navigator.clipboard.writeText(payload);
+    }
+    return new Promise((resolve, reject) => {
       const ta = document.createElement("textarea");
       ta.value = payload;
       ta.style.position = "fixed";
@@ -1125,43 +1117,42 @@ document.getElementById("btn-unwinnable-keep-trying").addEventListener("click", 
       ta.select();
       try {
         document.execCommand("copy");
-        showToast("Game state copied");
-      } catch (_) {
-        showToast("Copy failed");
+        resolve();
+      } catch (e) {
+        reject(e);
+      } finally {
+        document.body.removeChild(ta);
       }
-      document.body.removeChild(ta);
+    });
+  }
+
+  function exportState() {
+    const payload = localStorage.getItem("solitaire-state") || "";
+    const versionEl = document.getElementById("version");
+    const version = versionEl ? versionEl.textContent.trim() : "";
+
+    writeClipboard(payload).then(
+      () => showToast("Game state copied"),
+      () => showToast("Copy failed")
+    );
+
+    if (navigator.share) {
+      navigator.share({
+        title: `Solitaire state ${version}`,
+        text: payload,
+      }).catch(() => { /* user cancelled or share rejected — clipboard still has it */ });
     }
   }
 
-  versionEl.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    active = true;
-    pressStart = performance.now();
-    startX = e.clientX;
-    startY = e.clientY;
-  });
-
-  versionEl.addEventListener("pointermove", (e) => {
-    if (!active) return;
-    if (Math.abs(e.clientX - startX) > MOVE_TOLERANCE_PX ||
-        Math.abs(e.clientY - startY) > MOVE_TOLERANCE_PX) {
-      active = false;
+  versionEl.addEventListener("click", () => {
+    const now = performance.now();
+    tapTimes = tapTimes.filter(t => now - t <= TAP_WINDOW_MS);
+    tapTimes.push(now);
+    if (tapTimes.length >= 3) {
+      tapTimes = [];
+      exportState();
     }
   });
-
-  versionEl.addEventListener("pointerup", (e) => {
-    if (!active) return;
-    const held = performance.now() - pressStart;
-    active = false;
-    if (held >= LONG_PRESS_MS) {
-      // Copy is triggered in direct response to pointerup — iOS Safari
-      // requires clipboard writes to happen within an active user gesture.
-      copyState();
-    }
-  });
-
-  versionEl.addEventListener("pointercancel", () => { active = false; });
-  versionEl.addEventListener("pointerleave", () => { active = false; });
 
   versionEl.addEventListener("contextmenu", (e) => e.preventDefault());
 })();
