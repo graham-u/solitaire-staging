@@ -462,7 +462,7 @@ function checkWin() {
   if (!won) return;
   stopTimer();
   showWinOverlay();
-  launchConfetti();
+  startFireworks();
   clearSavedState();
 }
 
@@ -473,18 +473,156 @@ function showWinOverlay() {
   document.getElementById("win-overlay").classList.remove("hidden");
 }
 
-function launchConfetti() {
-  const colours = ["#ff0", "#f00", "#0f0", "#00f", "#f0f", "#0ff", "#ff8800"];
-  for (let i = 0; i < 80; i++) {
-    const el = document.createElement("div");
-    el.className = "confetti";
-    el.style.left = Math.random() * 100 + "vw";
-    el.style.background = colours[Math.floor(Math.random() * colours.length)];
-    el.style.animationDelay = Math.random() * 2 + "s";
-    el.style.animationDuration = (2 + Math.random() * 2) + "s";
-    el.style.borderRadius = Math.random() > 0.5 ? "50%" : "0";
-    document.body.appendChild(el);
-    el.addEventListener("animationend", () => el.remove());
+/* ── Win celebration: canvas fireworks ── */
+
+const FIREWORKS_SPAWN_MS = 30000;   // keep launching rockets for 30s, then settle
+const FIREWORKS_GRAVITY = 0.05;
+
+let fireworksRaf = null;
+let fireworksCanvas = null;
+let fireworksCtx = null;
+
+function sizeFireworksCanvas() {
+  if (!fireworksCanvas || !fireworksCtx) return;
+  const dpr = window.devicePixelRatio || 1;
+  fireworksCanvas.width = Math.floor(window.innerWidth * dpr);
+  fireworksCanvas.height = Math.floor(window.innerHeight * dpr);
+  // Draw in CSS pixels; the transform maps them to device pixels for crispness.
+  fireworksCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// Skipped under test automation (navigator.webdriver true), where the
+// unbounded animation loop would otherwise slow concurrent tests.
+function startFireworks() {
+  if (navigator.webdriver) return;
+  if (fireworksRaf !== null) return;   // already running
+
+  fireworksCanvas = document.getElementById("fireworks");
+  if (!fireworksCanvas) return;
+  fireworksCtx = fireworksCanvas.getContext("2d");
+  sizeFireworksCanvas();
+  window.addEventListener("resize", sizeFireworksCanvas);
+
+  const ctx = fireworksCtx;
+  const W = () => window.innerWidth;
+  const H = () => window.innerHeight;
+  const rockets = [];
+  const sparks = [];
+  const startT = performance.now();
+  let lastLaunch = 0;
+
+  function launchRocket() {
+    const x = W() * (0.15 + Math.random() * 0.7);
+    rockets.push({
+      x, y: H(), px: x, py: H(),
+      vx: (Math.random() - 0.5) * 1.2,
+      // Wide speed range so rockets burst at varied heights (upper-to-mid
+      // screen) rather than all clustering near the top at their apex.
+      vy: -(Math.random() * 5.5 + 6),
+      hue: Math.floor(Math.random() * 360)
+    });
+  }
+
+  function explode(r) {
+    const rainbow = Math.random() < 0.25;
+    const lingering = Math.random() < 0.2;   // ~20% of bursts hang as embers
+    const count = 70 + Math.floor(Math.random() * 70);   // generous bursts
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 5 + 1;
+      const hue = rainbow
+        ? Math.floor(Math.random() * 360)
+        : r.hue + (Math.random() - 0.5) * 40;
+      sparks.push({
+        x: r.x, y: r.y, px: r.x, py: r.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        hue, life: 1,
+        // Lingering bursts fade ~4x slower and, with lower gravity and more
+        // drag, drift in place so you see them far longer before they go out.
+        decay: lingering
+          ? 0.0025 + Math.random() * 0.0025
+          : 0.008 + Math.random() * 0.012,
+        friction: lingering ? 0.99 : 0.985,
+        grav: lingering ? 0.4 : 1,
+        lingering
+      });
+    }
+  }
+
+  function frame(now) {
+    const elapsed = now - startT;
+    ctx.clearRect(0, 0, W(), H());
+    ctx.globalCompositeOperation = "lighter";   // additive glow
+
+    if (elapsed < FIREWORKS_SPAWN_MS && now - lastLaunch > 320) {
+      lastLaunch = now;
+      launchRocket();
+      if (Math.random() < 0.4) launchRocket();   // sometimes a salvo
+    }
+
+    for (let i = rockets.length - 1; i >= 0; i--) {
+      const r = rockets[i];
+      r.px = r.x; r.py = r.y;
+      r.vy += FIREWORKS_GRAVITY;
+      r.x += r.vx; r.y += r.vy;
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = `hsl(${r.hue}, 100%, 70%)`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(r.px, r.py);
+      ctx.lineTo(r.x, r.y);
+      ctx.stroke();
+      if (r.vy >= -1.5) { explode(r); rockets.splice(i, 1); }   // burst near apex
+    }
+
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const s = sparks[i];
+      s.px = s.x; s.py = s.y;
+      s.vx *= s.friction;
+      s.vy = s.vy * s.friction + FIREWORKS_GRAVITY * s.grav;
+      s.x += s.vx; s.y += s.vy;
+      s.life -= s.decay;
+      if (s.life <= 0) { sparks.splice(i, 1); continue; }
+      const a = Math.max(0, s.life);
+      // Wide faint halo under a thin bright core; with the additive blend this
+      // reads as a glowing spark. Lingering embers get a fatter halo.
+      ctx.globalAlpha = a * 0.3;
+      ctx.lineWidth = s.lingering ? 7 : 5;
+      ctx.strokeStyle = `hsl(${s.hue}, 100%, 60%)`;
+      ctx.beginPath();
+      ctx.moveTo(s.px, s.py);
+      ctx.lineTo(s.x, s.y);
+      ctx.stroke();
+
+      ctx.globalAlpha = a;
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = `hsl(${s.hue}, 100%, 72%)`;
+      ctx.beginPath();
+      ctx.moveTo(s.px, s.py);
+      ctx.lineTo(s.x, s.y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    if (elapsed >= FIREWORKS_SPAWN_MS && rockets.length === 0 && sparks.length === 0) {
+      stopFireworks();
+      return;
+    }
+    fireworksRaf = requestAnimationFrame(frame);
+  }
+
+  fireworksRaf = requestAnimationFrame(frame);
+}
+
+function stopFireworks() {
+  if (fireworksRaf !== null) {
+    cancelAnimationFrame(fireworksRaf);
+    fireworksRaf = null;
+  }
+  window.removeEventListener("resize", sizeFireworksCanvas);
+  if (fireworksCtx) {
+    fireworksCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
   }
 }
 
@@ -1098,6 +1236,7 @@ document.getElementById("btn-undo").addEventListener("click", () => {
 
 document.getElementById("btn-win-new-game").addEventListener("click", () => {
   document.getElementById("win-overlay").classList.add("hidden");
+  stopFireworks();
   dealGame();
 });
 

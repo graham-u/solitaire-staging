@@ -404,20 +404,32 @@ body {
 #win-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  /* Dark "night sky" so the fireworks colours pop. */
+  background: rgba(0, 0, 0, 0.82);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
 }
 
+/* Full-screen fireworks layer; sits above the dark backdrop but behind the
+   win text. Non-interactive so the New Game button stays tappable. */
+#fireworks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* No panel: the win text floats directly over the fireworks. */
 #win-dialog {
-  background: white;
-  border-radius: 16px;
+  background: transparent;
   padding: 32px 40px;
   text-align: center;
-  max-width: 340px;
-  width: 85%;
+  position: relative;
+  z-index: 1;
   animation: win-pop 0.4s ease-out;
 }
 
@@ -427,19 +439,21 @@ body {
 }
 
 #win-dialog h1 {
-  font-size: 32px;
-  color: #2d7a3a;
-  margin-bottom: 16px;
+  font-size: 46px;
+  color: #fff;
+  margin-bottom: 18px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.95), 0 0 28px rgba(0, 0, 0, 0.6);
 }
 
 #win-dialog p {
-  font-size: 20px;
-  color: #333;
+  font-size: 22px;
+  color: #fff;
   margin-bottom: 8px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
 }
 
 #btn-win-new-game {
-  margin-top: 20px;
+  margin-top: 24px;
   background: #2d7a3a;
   color: white;
   border: none;
@@ -448,6 +462,7 @@ body {
   font-size: 20px;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
 }
 
 /* Unwinnable overlay */
@@ -681,20 +696,6 @@ body {
 
 .hidden {
   display: none !important;
-}
-
-/* Win confetti */
-@keyframes confetti-fall {
-  0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
-  100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
-}
-
-.confetti {
-  position: fixed;
-  width: 10px;
-  height: 10px;
-  z-index: 99;
-  animation: confetti-fall 3s ease-in forwards;
 }
 
 /* Landscape: render game in a portrait container */
