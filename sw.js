@@ -1,4 +1,11 @@
-const CACHE_NAME = "solitaire-v26";
+const CACHE_NAME = "solitaire-v27";
+
+// How long to wait for the network before falling back to the cached copy.
+// A truly offline device rejects fetch() quickly, but a device connected to a
+// network with no real internet access (dead router, captive portal) can leave
+// fetch() hanging for a long time. Without this cap every asset stalls and the
+// app never loads, defeating the offline guarantee of the PWA.
+const NETWORK_TIMEOUT_MS = 3000;
 const ASSETS = [
   "./",
   "./index.html",
@@ -41,12 +48,43 @@ self.addEventListener("fetch", (e) => {
   // Combined with the network-first strategy below, this ensures new app
   // versions are picked up as soon as they are deployed.
   e.respondWith(
-    fetch(e.request, { cache: "no-cache" })
-      .then((response) => {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
-        return response;
-      })
-      .catch(() => caches.match(e.request))
+    new Promise((resolve) => {
+      let settled = false;
+      const settle = (resp) => {
+        // Ignore a missing cache match (undefined) so a slow network still wins
+        // if the cache can't satisfy the request.
+        if (!settled && resp) {
+          settled = true;
+          resolve(resp);
+        }
+      };
+
+      // If the network hasn't answered in time, serve the cached version so the
+      // user can keep playing. The network request is left running so its
+      // response still refreshes the cache for next time.
+      const timer = setTimeout(() => {
+        caches.match(e.request).then(settle);
+      }, NETWORK_TIMEOUT_MS);
+
+      fetch(e.request, { cache: "no-cache" })
+        .then((response) => {
+          clearTimeout(timer);
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          settle(response);
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          // Network failed: serve from cache, or surface a network error if the
+          // request was never cached (so respondWith always resolves).
+          caches.match(e.request).then((cached) => {
+            if (cached) settle(cached);
+            else if (!settled) {
+              settled = true;
+              resolve(Response.error());
+            }
+          });
+        });
+    })
   );
 });
