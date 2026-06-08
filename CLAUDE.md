@@ -82,6 +82,8 @@ npx tsx tests/run-all.mjs
 # 3. Stop the server using TaskStop with the background task ID
 ```
 
+**Run the suite via a sub-agent and have it report back only the pass/fail summary plus any failing test names and their `FAIL:` messages.** This keeps the bulky per-test output out of the main context while preserving the full result. Do **not** pipe the run through `tail` — a flaky failure's `✗ <name>` / `FAIL:` line can be the part that scrolls off, leaving you guessing which test failed. The runner reports failures clearly (red `✗` + name + message, see `tests/helpers.mjs`); never discard that.
+
 Individual test suites can also be run via their export:
 
 | File | Coverage |
