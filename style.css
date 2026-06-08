@@ -325,6 +325,43 @@ body {
   cursor: default;
 }
 
+/* Finish Up: one-tap sweep of all remaining cards to the foundations.
+   Sits between the tableau and the action bar, and is shown only when no
+   face-down cards remain (see updateFinishUpButton in app.js). Amber so it
+   stands out from the green action-bar buttons and reads as the thing to
+   press next. */
+#finish-up-bar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 12px;
+  flex-shrink: 0;
+}
+
+#btn-finish-up {
+  background: #e0a82e;
+  color: #1a1a1a;
+  border: none;
+  border-radius: 10px;
+  padding: 16px 44px;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  animation: finish-up-pulse 1.6s ease-in-out infinite;
+}
+
+#btn-finish-up:active {
+  background: #c8901f;
+  animation: none;
+}
+
+@keyframes finish-up-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+
 /* Version */
 #version {
   position: fixed;

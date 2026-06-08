@@ -516,6 +516,80 @@ export default async function run() {
       assertEqual(result.score, 0, "score should floor at 0, not go negative");
       assertEqual(result.foundationLen, 0, "foundation should be empty");
     });
+
+    await test("Finish Up button hidden while face-down cards remain", async () => {
+      const hidden = await ev(() => {
+        dealGame();
+        render();
+        return document.getElementById("finish-up-bar").classList.contains("hidden");
+      });
+      assert(hidden, "button should be hidden on a fresh deal");
+    });
+
+    await test("Finish Up button appears when no face-down cards remain", async () => {
+      // Flip every tableau card face-up but leave the stock full: the button
+      // should still appear (trigger is face-down-in-tableau, not stock empty).
+      const shown = await ev(() => {
+        dealGame();
+        state.tableau.forEach((col) => col.forEach((c) => { c.faceUp = true; }));
+        render();
+        return {
+          visible: !document.getElementById("finish-up-bar").classList.contains("hidden"),
+          stockLen: state.stock.length,
+        };
+      });
+      assert(shown.visible, "button should appear when no face-down cards remain");
+      assert(shown.stockLen > 0, "this case should still have cards in the stock");
+    });
+
+    await test("Finish Up button hidden once the game is won", async () => {
+      const hidden = await ev(() => {
+        dealGame();
+        const suits = ["clubs", "diamonds", "hearts", "spades"];
+        const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+        state.foundations = suits.map((s) => RANKS.map((r) => ({ suit: s, rank: r, faceUp: true })));
+        state.tableau = [[], [], [], [], [], [], []];
+        state.stock = [];
+        state.waste = [];
+        render();
+        return document.getElementById("finish-up-bar").classList.contains("hidden");
+      });
+      assert(hidden, "button should be hidden when every foundation is complete");
+    });
+
+    await test("Finish Up button sweeps a near-won game to a win", async () => {
+      await ev(() => {
+        // All four kings face-up on the tableau, foundations at Q, no stock.
+        dealGame();
+        state.stock = [];
+        state.waste = [];
+        state.foundations = [[], [], [], []];
+        state.tableau = [[], [], [], [], [], [], []];
+        const suits = ["clubs", "diamonds", "hearts", "spades"];
+        const RANKS = ["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+        for (let si = 0; si < 4; si++) {
+          for (let r = 0; r < 12; r++) {
+            state.foundations[si].push({ suit: suits[si], rank: RANKS[r], faceUp: true });
+          }
+          state.tableau[si].push({ suit: suits[si], rank: "K", faceUp: true });
+        }
+        state.recycleCount = 1;
+        solverState.hasCompletedFirstCycle = true;
+        render();
+        document.getElementById("btn-finish-up").click();
+      });
+      // Wait for the solver to find the path and the sweep to complete.
+      await page.waitForFunction(
+        () => !document.getElementById("win-overlay").classList.contains("hidden"),
+        { timeout: 35000 }
+      );
+      const result = await ev(() => ({
+        won: state.foundations.every((f) => f.length === 13),
+        barHidden: document.getElementById("finish-up-bar").classList.contains("hidden"),
+      }));
+      assert(result.won, "all foundations should be complete after the sweep");
+      assert(result.barHidden, "Finish Up button should be hidden after winning");
+    });
   });
 
   return summary();

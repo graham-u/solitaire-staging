@@ -442,6 +442,21 @@ function clearHint() {
 
 /* ── Win ── */
 
+function tableauHasFaceDownCards() {
+  return state.tableau.some(col => col.some(card => !card.faceUp));
+}
+
+// Show the Finish Up button once every tableau card is face-up — from there
+// the game is winnable, so one tap sweeps the rest to the foundations. Hidden
+// while a sweep is already running or the game is won.
+function updateFinishUpButton() {
+  const bar = document.getElementById("finish-up-bar");
+  if (!bar) return;
+  const won = state.foundations.every(f => f.length === 13);
+  const show = !won && !autoPlayState.playing && !tableauHasFaceDownCards();
+  bar.classList.toggle("hidden", !show);
+}
+
 function checkWin() {
   const won = state.foundations.every(f => f.length === 13);
   if (!won) return;
@@ -599,6 +614,7 @@ function render() {
   renderTopRow();
   renderTableau();
   updateUndoButton();
+  updateFinishUpButton();
   scheduleSolverCheck();
 }
 
@@ -817,7 +833,7 @@ function requestSolverPath(mode) {
   } else { // autosolve
     const cachedRemaining = remainingMovesFromCachedPlan();
     if (cachedRemaining && cachedRemaining.length > 0) {
-      startAutoPlay(cachedRemaining);
+      startAutoPlay(cachedRemaining, pendingAutoPlayInterval);
       return;
     }
   }
@@ -863,7 +879,10 @@ function requestSolverPath(mode) {
 }
 
 function requestSolverHint() { requestSolverPath("hint"); }
-function requestSolverAutoSolve() { requestSolverPath("autosolve"); }
+function requestSolverAutoSolve(intervalMs = AUTOPLAY_INTERVAL_MS) {
+  pendingAutoPlayInterval = intervalMs;
+  requestSolverPath("autosolve");
+}
 
 function setHintDialogMessage(text) {
   const p = document.querySelector("#hint-dialog p");
@@ -894,7 +913,7 @@ function handleSolverMessage(e) {
     hideHintOverlay();
     if (msg.outcome === "winnable" && msg.moves && msg.moves.length > 0) {
       cachedPlan = { moves: msg.moves, snapshots: msg.snapshots };
-      if (solverPathMode === "autosolve") startAutoPlay(msg.moves);
+      if (solverPathMode === "autosolve") startAutoPlay(msg.moves, pendingAutoPlayInterval);
       else showHintFromSolverMove(msg.moves[0]);
     } else if (msg.outcome === "unwinnable") {
       cachedPlan = null;
@@ -910,10 +929,16 @@ function handleSolverMessage(e) {
 
 /* ── Auto-play (long-press hint) ── */
 
-const AUTOPLAY_INTERVAL_MS = 333;     // 3 moves per second
+const AUTOPLAY_INTERVAL_MS = 333;     // 3 moves per second (long-press auto-solve)
+const FINISH_UP_INTERVAL_MS = 150;    // ~6 moves per second (Finish Up button)
 const LONG_PRESS_HOLD_MS = 5000;      // 5 s hold to trigger auto-solve
 
 let autoPlayState = { playing: false, intervalId: null, queue: [] };
+
+// Speed of the next auto-play run. Set by requestSolverAutoSolve and read by
+// startAutoPlay (including the deferred call from the solver-message handler),
+// so the Finish Up button can sweep faster than the long-press auto-solve.
+let pendingAutoPlayInterval = AUTOPLAY_INTERVAL_MS;
 
 function applySolverMove(move) {
   // Reuse the existing user-action helpers where possible so each move
@@ -961,16 +986,17 @@ function applySolverMove(move) {
   saveState();
 }
 
-function startAutoPlay(moves) {
+function startAutoPlay(moves, intervalMs = AUTOPLAY_INTERVAL_MS) {
   hideHintOverlay();
   autoPlayState.playing = true;
   autoPlayState.queue = moves.slice();
   setHintButtonStopMode(true);
+  updateFinishUpButton();   // hide the Finish Up button while the sweep runs
   // Play the first move immediately so the user sees something happen
-  // without waiting a full 333 ms after the dialog closes.
+  // without waiting a full interval after the dialog closes.
   playNextAutoMove();
   if (autoPlayState.playing) {
-    autoPlayState.intervalId = setInterval(playNextAutoMove, AUTOPLAY_INTERVAL_MS);
+    autoPlayState.intervalId = setInterval(playNextAutoMove, intervalMs);
   }
 }
 
@@ -990,6 +1016,7 @@ function stopAutoPlay() {
   autoPlayState.playing = false;
   autoPlayState.queue = [];
   setHintButtonStopMode(false);
+  updateFinishUpButton();   // restore the button if a stopped sweep left cards
 }
 
 function setHintButtonStopMode(stop) {
@@ -1054,6 +1081,11 @@ hintBtn.addEventListener("pointerup", () => {
 
 hintBtn.addEventListener("pointerleave", cancelHintHold);
 hintBtn.addEventListener("pointercancel", cancelHintHold);
+
+document.getElementById("btn-finish-up").addEventListener("click", () => {
+  if (autoPlayState.playing) return;
+  requestSolverAutoSolve(FINISH_UP_INTERVAL_MS);
+});
 
 document.getElementById("btn-hint-cancel").addEventListener("click", cancelHintRequest);
 

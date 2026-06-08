@@ -1,4 +1,4 @@
-const CACHE_NAME = "solitaire-v27";
+const CACHE_NAME = "solitaire-v28";
 
 // How long to wait for the network before falling back to the cached copy.
 // A truly offline device rejects fetch() quickly, but a device connected to a
